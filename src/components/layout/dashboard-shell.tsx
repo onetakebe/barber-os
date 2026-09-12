@@ -86,15 +86,15 @@ export function DashboardShell({ children, session, notificationCount }: { child
   const pathname = usePathname();
   const initials = session.name.split(" ").map((part) => part[0]).slice(0, 2).join("");
   return (
-    <div className="relative min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[244px] flex-col border-r border-white/8 bg-sidebar p-4 lg:flex">
+    <div className="dashboard-shell relative min-h-screen bg-background">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[244px] flex-col border-r border-white/8 bg-sidebar/65 p-4 backdrop-blur-xl lg:flex">
         <Link href="/painel" className="px-2 py-3"><BrandMark /></Link>
         <div className="mt-2 flex-1 overflow-y-auto"><NavLinks role={session.role} /></div>
         {authorize(session.role, "settings:edit") ? <Link href="/configuracoes" className="mt-2 flex h-10 items-center gap-3 border-t border-white/15 px-3 text-xs uppercase tracking-[.12em] text-white/55 transition-colors hover:bg-white hover:text-black"><Settings className="size-4" /> Configurações</Link> : null}
       </aside>
 
       <div className="relative z-10 lg:pl-[244px]">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/8 bg-background/95 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/8 bg-background/60 px-4 backdrop-blur sm:px-6">
           <Sheet>
             <SheetTrigger asChild><Button variant="outline" size="icon" className="lg:hidden"><Menu /><span className="sr-only">Abrir navegação</span></Button></SheetTrigger>
             <SheetContent side="left" className="w-[290px] p-3"><SheetHeader className="px-2"><SheetTitle className="sr-only">Navegação</SheetTitle><BrandMark /></SheetHeader><NavLinks role={session.role} /></SheetContent>
@@ -114,7 +114,7 @@ export function DashboardShell({ children, session, notificationCount }: { child
         <main className="mx-auto max-w-[1640px] px-4 pb-28 pt-5 sm:px-6 lg:px-7 lg:pb-10">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-white/15 bg-sidebar p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-white/15 bg-sidebar/80 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
         {primaryNavigation.filter((item) => authorize(session.role, item.permission)).slice(0, 4).map((item) => { const Icon = item.icon; return <Button key={item.href} asChild variant="ghost" size="icon"><Link href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={pathname === item.href ? "bg-brand/12 text-brand hover:bg-brand/20 hover:text-brand" : "text-muted-foreground"}><Icon /><span className="sr-only">{item.label}</span></Link></Button>; })}
       </nav>
     </div>
