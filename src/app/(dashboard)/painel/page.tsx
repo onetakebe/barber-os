@@ -14,6 +14,9 @@ import { requirePermission } from "@/server/auth/authorization";
 import { getDashboardData } from "@/server/data/dashboard";
 import { db } from "@/server/db";
 
+// Um ícone por indicador, na ordem em que getDashboardData os devolve.
+const metricIcons = [TrendingUp, CalendarClock, Clock3, Users];
+
 const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cents / 100);
 
 export default async function DashboardPage() {
@@ -44,13 +47,19 @@ export default async function DashboardPage() {
       </section>
 
       <section aria-label="Resumo da operação" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {data.metrics.map((metric) => (
-          <div key={metric.label} className="dashboard-card min-w-0 px-4 py-5 sm:px-5">
-            <p className="text-xs text-muted-foreground">{metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}</p>
-            <p className="font-heading mt-3 text-3xl font-semibold tracking-[-.045em]">{metric.value}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada registrada" : metric.change}</p>
-          </div>
-        ))}
+        {data.metrics.map((metric, index) => {
+          const Icon = metricIcons[index] ?? TrendingUp;
+          return (
+            <div key={metric.label} className="dashboard-card flex min-w-0 items-center gap-3.5 px-4 py-3.5">
+              <span className="icon-tile size-10 shrink-0"><Icon className="size-4" /></span>
+              <div className="min-w-0">
+                <p className="text-[11px] text-muted-foreground">{metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}</p>
+                <p className="font-heading mt-1 text-2xl font-semibold leading-none tracking-[-.045em]">{metric.value}</p>
+              </div>
+              <p className="ml-auto max-w-[9ch] text-right text-[11px] leading-4 text-muted-foreground">{metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada" : metric.change}</p>
+            </div>
+          );
+        })}
       </section>
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_270px]">

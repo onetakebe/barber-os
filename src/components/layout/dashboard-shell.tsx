@@ -97,7 +97,7 @@ export function DashboardShell({ children, session, notificationCount }: { child
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/8 bg-background/60 px-4 backdrop-blur sm:px-6">
           <Sheet>
             <SheetTrigger asChild><Button variant="outline" size="icon" className="lg:hidden"><Menu /><span className="sr-only">Abrir navegação</span></Button></SheetTrigger>
-            <SheetContent side="left" className="w-[290px] p-3"><SheetHeader className="px-2"><SheetTitle className="sr-only">Navegação</SheetTitle><BrandMark /></SheetHeader><NavLinks role={session.role} /></SheetContent>
+            <SheetContent side="left" className="w-[290px] bg-sidebar/70 p-3 backdrop-blur-xl"><SheetHeader className="px-2"><SheetTitle className="sr-only">Navegação</SheetTitle><BrandMark /></SheetHeader><NavLinks role={session.role} /></SheetContent>
           </Sheet>
           <form action="/busca" className="relative hidden max-w-sm flex-1 sm:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
