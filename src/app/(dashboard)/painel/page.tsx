@@ -17,6 +17,47 @@ import { db } from "@/server/db";
 // Um ícone por indicador, na ordem em que getDashboardData os devolve.
 const metricIcons = [TrendingUp, CalendarClock, Clock3, Users];
 
+// Sinal mínimo por indicador, sempre com dado real: receita = linha dos 14 dias,
+// reservas = um traço por reserva de hoje, ocupação = barra. Sem dado, sem sinal —
+// valor zero vira linha plana ou traços apagados, nunca uma curva de exemplo.
+function Sparkline({ points }: { points: number[] }) {
+  const max = Math.max(...points, 0);
+  const width = 120;
+  const height = 28;
+  const step = width / Math.max(points.length - 1, 1);
+  const y = (value: number) => (max > 0 ? height - 2 - (value / max) * (height - 4) : height - 2);
+  const line = points.map((value, index) => `${index === 0 ? "M" : "L"}${(index * step).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-7 w-full" aria-hidden="true">
+      <path d={`${line} L${width},${height} L0,${height} Z`} fill="var(--brand)" fillOpacity={max > 0 ? 0.18 : 0} />
+      <path d={line} fill="none" stroke="var(--brand)" strokeWidth={1.5} strokeOpacity={max > 0 ? 1 : 0.35} />
+    </svg>
+  );
+}
+
+type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
+
+function MetricSignal({ index, data, canViewFinance }: { index: number; data: DashboardData; canViewFinance: boolean }) {
+  if (index === 0) return canViewFinance ? <Sparkline points={data.revenueTrend.map((point) => point.revenue)} /> : <div className="h-7" />;
+  if (index === 1) {
+    const active = new Set(["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"]);
+    const slots = Math.max(8, data.appointments.length);
+    return (
+      <div className="flex h-7 items-center gap-1" aria-hidden="true">
+        {Array.from({ length: slots }, (_, slot) => {
+          const appointment = data.appointments[slot];
+          return <span key={slot} className={`h-1.5 flex-1 rounded-full ${!appointment ? "bg-white/10" : active.has(appointment.status) ? "bg-brand" : "bg-brand/35"}`} />;
+        })}
+      </div>
+    );
+  }
+  if (index === 2) {
+    const value = Number.parseInt(data.metrics[2]?.value ?? "0", 10) || 0;
+    return <div className="flex h-7 items-center"><Progress value={value} className="h-1.5 [&>div]:bg-brand" /></div>;
+  }
+  return <div className="h-7" />;
+}
+
 const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(cents / 100);
 
 export default async function DashboardPage() {
@@ -50,13 +91,16 @@ export default async function DashboardPage() {
         {data.metrics.map((metric, index) => {
           const Icon = metricIcons[index] ?? TrendingUp;
           return (
-            <div key={metric.label} className="dashboard-card flex min-w-0 items-center gap-3.5 px-4 py-3.5">
-              <span className="icon-tile size-10 shrink-0"><Icon className="size-4" /></span>
-              <div className="min-w-0">
-                <p className="text-[11px] text-muted-foreground">{metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}</p>
-                <p className="font-heading mt-1 text-2xl font-semibold leading-none tracking-[-.045em]">{metric.value}</p>
+            <div key={metric.label} className="dashboard-card flex min-w-0 flex-col gap-3 px-4 pb-3.5 pt-4 sm:px-5">
+              <div className="flex items-center gap-2.5">
+                <span className="icon-tile size-8 shrink-0"><Icon className="size-4" /></span>
+                <p className="truncate text-xs text-muted-foreground">{metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}</p>
               </div>
-              <p className="ml-auto max-w-[9ch] text-right text-[11px] leading-4 text-muted-foreground">{metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada" : metric.change}</p>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <p className="font-heading text-[28px] font-semibold leading-none tracking-[-.045em]">{metric.value}</p>
+                <p className="text-[11px] text-muted-foreground">{metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada" : metric.change}</p>
+              </div>
+              <MetricSignal index={index} data={data} canViewFinance={canViewFinance} />
             </div>
           );
         })}
