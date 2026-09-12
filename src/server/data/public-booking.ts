@@ -19,7 +19,7 @@ export function getBookableDates(timezone: string, now = new Date()) {
 }
 
 export async function getPublicBookingCatalog(slug: string) {
-  return db.tenant.findFirst({
+  const tenant = await db.tenant.findFirst({
     where: { slug, deletedAt: null },
     select: {
       id: true,
@@ -51,32 +51,55 @@ export async function getPublicBookingCatalog(slug: string) {
       },
     },
   });
+  if (!tenant) return null;
+
+  const ratings = await db.review.groupBy({
+    by: ["staffId"],
+    where: { tenantId: tenant.id, isPublic: true, staffId: { in: tenant.staff.map((member) => member.id) } },
+    _avg: { rating: true },
+    _count: { rating: true },
+  });
+  const ratingByStaff = new Map(ratings.map((row) => [row.staffId, { average: row._avg.rating, count: row._count.rating }]));
+
+  return {
+    ...tenant,
+    staff: tenant.staff.map((member) => {
+      const summary = ratingByStaff.get(member.id);
+      return { ...member, rating: summary?.average ?? null, reviewCount: summary?.count ?? 0 };
+    }),
+  };
+}
+
+/** Núcleo da disponibilidade, por tenant. A reserva pública chega por slug; o painel já tem o
+ *  tenantId da sessão e não deve pagar uma consulta a mais nem duplicar a regra. */
+export async function getAvailabilityForTenant(input: { tenantId: string; timezone: string; date: string; serviceId: string; staffId?: string }) {
+  const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: input.tenantId, isActive: true, deletedAt: null }, select: { id: true, durationMinutes: true } });
+  if (!service) return null;
+
+  const startsAt = localDateTimeToUtc(input.date, "00:00", input.timezone);
+  const endsAt = localDateTimeToUtc(nextDate(input.date), "00:00", input.timezone);
+  const staff = await db.staff.findMany({
+    where: {
+      tenantId: input.tenantId,
+      deletedAt: null,
+      isBookable: true,
+      ...(input.staffId && input.staffId !== "any" ? { id: input.staffId } : {}),
+      services: { some: { tenantId: input.tenantId, serviceId: service.id } },
+    },
+    select: {
+      id: true,
+      availability: { where: { tenantId: input.tenantId }, select: { dayOfWeek: true, startMinute: true, endMinute: true, breakStartMinute: true, breakEndMinute: true } },
+      timeOff: { where: { tenantId: input.tenantId, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
+      appointments: { where: { tenantId: input.tenantId, deletedAt: null, status: { in: [...activeStatuses] }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
+    },
+  });
+
+  const slots = getAvailableSlotsFromRecords({ date: input.date, timezone: input.timezone, durationMinutes: service.durationMinutes, intervalMinutes: 15, staff }).filter((slot) => slot.staffIds.length > 0);
+  return { tenantId: input.tenantId, serviceId: service.id, timezone: input.timezone, slots };
 }
 
 export async function getPublicAvailability(input: { slug: string; date: string; serviceId: string; staffId?: string }) {
   const tenant = await db.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true } });
   if (!tenant) return null;
-  const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: tenant.id, isActive: true, deletedAt: null }, select: { id: true, durationMinutes: true } });
-  if (!service) return null;
-
-  const startsAt = localDateTimeToUtc(input.date, "00:00", tenant.timezone);
-  const endsAt = localDateTimeToUtc(nextDate(input.date), "00:00", tenant.timezone);
-  const staff = await db.staff.findMany({
-    where: {
-      tenantId: tenant.id,
-      deletedAt: null,
-      isBookable: true,
-      ...(input.staffId && input.staffId !== "any" ? { id: input.staffId } : {}),
-      services: { some: { tenantId: tenant.id, serviceId: service.id } },
-    },
-    select: {
-      id: true,
-      availability: { where: { tenantId: tenant.id }, select: { dayOfWeek: true, startMinute: true, endMinute: true, breakStartMinute: true, breakEndMinute: true } },
-      timeOff: { where: { tenantId: tenant.id, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
-      appointments: { where: { tenantId: tenant.id, deletedAt: null, status: { in: [...activeStatuses] }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
-    },
-  });
-
-  const slots = getAvailableSlotsFromRecords({ date: input.date, timezone: tenant.timezone, durationMinutes: service.durationMinutes, intervalMinutes: 15, staff }).filter((slot) => slot.staffIds.length > 0);
-  return { tenantId: tenant.id, serviceId: service.id, timezone: tenant.timezone, slots };
+  return getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceId: input.serviceId, staffId: input.staffId });
 }

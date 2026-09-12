@@ -15,12 +15,19 @@ export const moduleMeta = {
 
 export type ModuleSlug = keyof typeof moduleMeta;
 
+/** Rosto do profissional numa célula da tabela, indexado pela coluna. */
+export type RowAvatar = { imageUrl: string | null; initials: string; color: string };
+
+function initialsOf(name: string) {
+  return name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+}
+
 export type ModuleData = {
   title: string;
   description: string;
   columns: readonly string[];
   action: string;
-  rows: { id: string; cells: string[]; edit?: Record<string, string | number> }[];
+  rows: { id: string; cells: string[]; avatars?: Record<number, RowAvatar>; edit?: Record<string, string | number> }[];
   stats: { label: string; value: string }[];
 };
 
@@ -49,7 +56,11 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       db.appointment.count({ where: { tenantId, status: "CONFIRMED", deletedAt: null, ...appointmentScope } }),
       db.appointment.count({ where: { tenantId, status: "COMPLETED", deletedAt: null, ...appointmentScope } }),
     ]);
-    rows = appointments.map((item) => ({ id: item.id, cells: [dateTime(item.startsAt, tenant.timezone), `${item.customer.firstName} ${item.customer.lastName}`, item.services.map((service) => service.service.name).join(", "), item.staff.displayName, item.status] }));
+    rows = appointments.map((item) => ({
+      id: item.id,
+      cells: [dateTime(item.startsAt, tenant.timezone), `${item.customer.firstName} ${item.customer.lastName}`, item.services.map((service) => service.service.name).join(", "), item.staff.displayName, item.status],
+      avatars: { 3: { imageUrl: item.staff.imageUrl, initials: initialsOf(item.staff.displayName), color: item.staff.color } },
+    }));
     stats = [{ label: "Total", value: integer(appointmentCount) }, { label: "Confirmados", value: integer(confirmed) }, { label: "Concluídos", value: integer(completed) }];
   }
 
@@ -69,7 +80,8 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
     rows = staff.map((item) => ({
       id: item.id,
       cells: [item.displayName, item.title ?? item.role, `${item._count.appointments} reservas · ${item._count.services} serviços`, `${(item.commissionBps / 100).toFixed(0)}%`, item.isBookable ? "Disponível" : "Inativo"],
-      edit: { displayName: item.displayName, title: item.title ?? "", commissionPercent: item.commissionBps / 100 },
+      avatars: { 0: { imageUrl: item.imageUrl, initials: initialsOf(item.displayName), color: item.color } },
+      edit: { displayName: item.displayName, title: item.title ?? "", commissionPercent: item.commissionBps / 100, imageUrl: item.imageUrl ?? "" },
     }));
     stats = [{ label: "Profissionais", value: integer(staff.length) }, { label: "Disponíveis online", value: integer(staff.filter((item) => item.isBookable).length) }, { label: "Reservas vinculadas", value: integer(staff.reduce((sum, item) => sum + item._count.appointments, 0)) }];
   }

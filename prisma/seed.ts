@@ -90,15 +90,17 @@ async function seed() {
   }
 
   const staffSeeds = [
-    { name: "Lucas Moreira", userId: users[3].id, title: "Barbeiro sênior", color: "#8B5CF6", commissionBps: 4800 },
-    { name: "Diego Santos", title: "Barbeiro", color: "#C4B5FD", commissionBps: 4500 },
-    { name: "Marco Almeida", title: "Barbeiro", color: "#B7F34A", commissionBps: 4500 },
-    { name: "André Costa", title: "Barbeiro", color: "#F59E0B", commissionBps: 4200 },
+    { name: "Lucas Moreira", userId: users[3].id, title: "Barbeiro sênior", color: "#8B5CF6", commissionBps: 4800, imageUrl: "/images/staff/lucas-moreira.png" },
+    { name: "Diego Santos", title: "Barbeiro", color: "#C4B5FD", commissionBps: 4500, imageUrl: "/images/staff/diego-santos.png" },
+    { name: "Marco Almeida", title: "Barbeiro", color: "#B7F34A", commissionBps: 4500, imageUrl: "/images/staff/marco-almeida.png" },
+    { name: "André Costa", title: "Barbeiro", color: "#F59E0B", commissionBps: 4200, imageUrl: "/images/staff/andre-costa.png" },
   ];
   const staff = [];
   for (const item of staffSeeds) {
     const existing = await prisma.staff.findFirst({ where: { tenantId, displayName: item.name } });
-    const member = existing ?? await prisma.staff.create({ data: { tenantId, displayName: item.name, userId: item.userId, title: item.title, color: item.color, commissionBps: item.commissionBps } });
+    const member = existing
+      ? await prisma.staff.update({ where: { id: existing.id }, data: { imageUrl: item.imageUrl } })
+      : await prisma.staff.create({ data: { tenantId, displayName: item.name, userId: item.userId, title: item.title, color: item.color, commissionBps: item.commissionBps, imageUrl: item.imageUrl } });
     staff.push(member);
     for (let day = 1; day <= 6; day += 1) {
       await prisma.availability.upsert({ where: { tenantId_staffId_dayOfWeek_startMinute: { tenantId, staffId: member.id, dayOfWeek: day, startMinute: 540 } }, update: {}, create: { tenantId, staffId: member.id, dayOfWeek: day, startMinute: 540, endMinute: day === 6 ? 1080 : 1140, breakStartMinute: 780, breakEndMinute: 840 } });

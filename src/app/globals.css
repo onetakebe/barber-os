@@ -7,6 +7,11 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface-base: var(--surface-base);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-invert: var(--surface-invert);
+  --color-surface-invert-muted: var(--surface-invert-muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-space-grotesk);
@@ -49,19 +54,27 @@
 }
 
 :root {
-  --background: oklch(0.105 0 0);
+  /* Escala de superfície: base -> painel -> elevado. Monocromática, mas com viés
+     quente (croma ~.005 no matiz 62) — o preto neutro puro é o que lia como chapado. */
+  --surface-base: oklch(0.160 0.005 62);
+  --surface-panel: oklch(0.198 0.006 62);
+  --surface-raised: oklch(0.235 0.007 62);
+  --surface-invert: oklch(0.962 0.004 78);
+  --surface-invert-muted: oklch(0.878 0.006 78);
+
+  --background: var(--surface-base);
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.145 0 0);
+  --card: var(--surface-panel);
   --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.17 0 0);
+  --popover: oklch(0.225 0.006 62);
   --popover-foreground: oklch(0.97 0 0);
   --primary: oklch(0.97 0 0);
-  --primary-foreground: oklch(0.105 0 0);
-  --secondary: oklch(0.205 0 0);
+  --primary-foreground: var(--surface-base);
+  --secondary: oklch(0.245 0.006 62);
   --secondary-foreground: oklch(0.94 0 0);
-  --muted: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.66 0 0);
-  --accent: oklch(0.25 0 0);
+  --muted: oklch(0.245 0.006 62);
+  --muted-foreground: oklch(0.68 0.004 62);
+  --accent: oklch(0.285 0.007 62);
   --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(1 0 0 / 10%);
@@ -73,11 +86,11 @@
   --chart-4: oklch(0.4 0 0);
   --chart-5: oklch(0.28 0 0);
   --radius: 0.7rem;
-  --sidebar: oklch(0.125 0 0);
+  --sidebar: oklch(0.185 0.006 62);
   --sidebar-foreground: oklch(0.92 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.105 0 0);
-  --sidebar-accent: oklch(0.22 0 0);
+  --sidebar-accent: oklch(0.262 0.006 62);
   --sidebar-accent-foreground: oklch(0.96 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.72 0 0);
@@ -93,7 +106,17 @@
   }
   body {
     @apply bg-background text-foreground;
-    background: #0a0a0a;
+  }
+  /* Grão no nível da página. Antes só existia sobre imagem (.image-grain), e por isso
+     as seções de cor sólida liam como chapado. */
+  body::after {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+    content: "";
+    inset: 0;
+    opacity: 0.038;
+    pointer-events: none;
+    position: fixed;
+    z-index: 60;
   }
   html {
     @apply font-sans;
@@ -124,8 +147,39 @@
     z-index: 2;
   }
 
+  /* Profundidade sem sombra solta: luz de topo por dentro + assentamento suave.
+     Mantém a regra do Grafite de separar por hairline, não por sombra. */
   .panel-glow {
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 24px 80px rgb(0 0 0 / 28%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 24px 80px rgb(0 0 0 / 28%);
+  }
+
+  /* Malha de squircles inclinada, fixa no viewport.
+     É um elemento de verdade, não `::before` com z-index negativo: negativo pinta ANTES
+     do fundo dos blocos em fluxo do pai, então some atrás do `bg-background` do shell —
+     testado, a 45% de opacidade continuava invisível. Aqui fica em z-0 e o conteúdo
+     sobe para z-10. */
+  .surface-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='76' height='76'%3E%3Crect x='6' y='6' width='56' height='56' rx='20' fill='%23ffffff'/%3E%3C/svg%3E");
+    background-size: 76px 76px;
+    inset: -30%;
+    mask-image: radial-gradient(80% 65% at 22% 12%, #000 0%, rgb(0 0 0 / 55%) 45%, transparent 78%);
+    /* Teto medido: a base é rgb(15,13,11) e o card `surface-panel` é rgb(24,21,19).
+       A 0.032 o quadrado chega a ~rgb(22) — visível e ainda ABAIXO do card, preservando
+       a hierarquia. Acima de ~0.045 o fundo fica mais claro que os cards e inverte. */
+    opacity: 0.032;
+    pointer-events: none;
+    position: fixed;
+    rotate: 16deg;
+    z-index: 0;
+  }
+
+  /* Gradiente de fundo, não sombra: dá origem de luz a uma seção escura inteira. */
+  .surface-ambient {
+    background-image: radial-gradient(115% 80% at 50% 0%, oklch(1 0 0 / 4.5%) 0%, transparent 62%);
+  }
+
+  .surface-ambient-invert {
+    background-image: radial-gradient(115% 80% at 50% 0%, oklch(0 0 0 / 5%) 0%, transparent 62%);
   }
 
   .text-balance {
