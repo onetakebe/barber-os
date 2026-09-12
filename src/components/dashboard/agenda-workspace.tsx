@@ -85,10 +85,10 @@ export function AgendaWorkspace({
   const gridTemplate = `64px repeat(${Math.max(1, staff.length)}, minmax(160px, 1fr))`;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="dashboard-workspace flex min-w-0 flex-col gap-6 p-4 sm:p-6">
       <section className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-[.18em] text-primary">Operação persistida</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-[.18em] text-primary">Seu dia, cadeira por cadeira</p>
           <h1 className="font-heading text-3xl font-semibold tracking-[-.035em]">Agenda</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {clockLabel(dayStartMinute)} às {clockLabel(dayEndMinute)} · {onGrid.length} {onGrid.length === 1 ? "reserva" : "reservas"} neste dia.
@@ -121,14 +121,14 @@ export function AgendaWorkspace({
           Nenhum profissional com agenda aberta. Cadastre a equipe para usar a grade.
         </p>
       ) : (
-        <section aria-label={`Grade da agenda — ${day?.label}`} className="overflow-x-auto border border-white/12 bg-surface-panel">
+        <section aria-label={`Grade da agenda — ${day?.label}`} className="dashboard-card overflow-x-auto">
           <div className="min-w-[640px]">
             {/* Cabeçalho: uma coluna por profissional */}
-            <div className="grid border-b border-white/12 bg-surface-panel" style={{ gridTemplateColumns: gridTemplate }}>
+            <div className="grid border-b border-white/12 bg-surface-raised" style={{ gridTemplateColumns: gridTemplate }}>
               <div className="border-r border-white/12 px-2 py-3 text-[10px] uppercase tracking-[.16em] text-muted-foreground">Hora</div>
               {staff.map((member) => (
                 <div key={member.id} className="flex items-center gap-2 border-r border-white/12 px-3 py-3 last:border-r-0">
-                  <StaffAvatar imageUrl={member.imageUrl} initials={member.initials} color={member.color} className="size-7" />
+                  <StaffAvatar imageUrl={member.imageUrl} initials={member.initials} color={member.color} className="size-10" />
                   <span className="truncate text-xs font-medium">{member.name}</span>
                 </div>
               ))}
@@ -188,7 +188,7 @@ export function AgendaWorkspace({
                       return (
                         <article
                           key={item.id}
-                          className="absolute inset-x-1 z-10 overflow-hidden border border-white/12 bg-surface-raised px-2 py-1.5"
+                          className="absolute inset-x-1 z-10 overflow-hidden rounded-lg border border-white/15 bg-surface-raised px-2 py-1.5"
                           style={{ top: (item.startMinute - dayStartMinute) * PX_PER_MINUTE, height, borderLeft: `3px solid ${member.color}` }}
                         >
                           <p className="font-mono text-[10px] text-muted-foreground">{item.time}–{item.end}</p>
