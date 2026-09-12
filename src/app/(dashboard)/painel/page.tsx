@@ -30,15 +30,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="dashboard-workspace flex min-w-0 flex-col gap-6 p-4 sm:gap-7 sm:p-6 xl:p-8">
-      <section className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
+      <section className="hero-brand flex flex-col justify-between gap-5 px-6 py-6 sm:px-7 sm:py-7 xl:flex-row xl:items-end">
         <div>
-          <p className="mb-3 text-xs capitalize text-muted-foreground">{dateLabel}</p>
+          <p className="mb-3 text-xs capitalize text-brand-ink/70">{dateLabel}</p>
           <h1 className="font-heading text-3xl font-semibold tracking-[-.045em] sm:text-4xl">Olá, {session.name.split(" ")[0]}.</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Seu dia, sua equipe. Tudo em um só lugar.</p>
+          <p className="mt-2 text-sm text-brand-ink/70">Seu dia, sua equipe. Tudo em um só lugar.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline"><Link href="/agenda"><CalendarClock data-icon="inline-start" /> Ver agenda</Link></Button>
-          {canEditAppointments ? <QuickAppointment tenantSlug={data.tenant.slug} /> : null}
+          {/* Variante default (sem regra dark:) para o override de cor pintar — ver Utilitario-sem-variante-perde-para-dark. */}
+          <Button asChild className="border-brand-ink/25 bg-brand-ink/12 text-brand-ink hover:bg-brand-ink/20"><Link href="/agenda"><CalendarClock data-icon="inline-start" /> Ver agenda</Link></Button>
+          {canEditAppointments ? <QuickAppointment tenantSlug={data.tenant.slug} className="bg-brand-ink text-white hover:bg-brand-ink/85" /> : null}
         </div>
       </section>
 
@@ -74,15 +75,15 @@ export default async function DashboardPage() {
             </div>
           ) : (
             <div className="flex min-h-56 flex-col items-center justify-center px-6 py-9 text-center">
-              <div className="mb-4 grid size-12 place-items-center rounded-2xl border border-white/10 bg-surface-raised"><CalendarClock className="size-5 text-muted-foreground" /></div>
+              <div className="icon-tile mb-4 size-12"><CalendarClock className="size-5" /></div>
               <h3 className="font-heading text-lg font-medium">Um dia com espaço para novos encontros.</h3>
               <p className="mt-2 max-w-xs text-sm leading-6 text-muted-foreground">Nenhuma reserva para hoje. Consulte a agenda para organizar os próximos atendimentos.</p>
-              <Link href="/agenda" className="mt-5 inline-flex items-center gap-2 text-sm underline decoration-white/30 underline-offset-4">Abrir agenda <ArrowRight className="size-3.5" /></Link>
+              <Link href="/agenda" className="mt-5 inline-flex items-center gap-2 text-sm text-brand underline decoration-brand/40 underline-offset-4 hover:decoration-brand">Abrir agenda <ArrowRight className="size-3.5" /></Link>
             </div>
           )}
         </div>
         <aside className="light-panel flex flex-col rounded-[18px] p-5 sm:p-6">
-          <Clock3 className="mb-5 size-5" />
+          <span className="icon-tile mb-5 size-10"><Clock3 className="size-5" /></span>
           <h2 className="font-heading text-xl font-semibold tracking-tight">Próximos horários</h2>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">Vagas de hoje para o serviço mais curto.</p>
           <div className="my-5 flex flex-1 flex-col gap-3">
@@ -104,7 +105,7 @@ export default async function DashboardPage() {
               <div className="relative w-24 shrink-0 self-stretch bg-black/10 sm:w-28">
                 {member.imageUrl ? <StaffPhoto src={member.imageUrl} alt={member.name} sizes="112px" className="object-cover object-top" /> : <div className="flex h-full min-h-36 items-center justify-center"><StaffAvatar imageUrl={null} initials={member.initials} className="size-12" /></div>}
               </div>
-              <div className="min-w-0 flex-1 p-4"><h3 className="font-heading text-sm font-semibold">{member.name}</h3><p className="mt-3 text-xs text-muted-foreground">Ocupação · {member.occupancy}%</p><Progress value={member.occupancy} className="mt-2 h-1" />{canViewFinance ? <p className="mt-4 font-mono text-sm">{euro(member.revenue)} <span className="font-sans text-[10px] text-muted-foreground">no mês</span></p> : null}</div>
+              <div className="min-w-0 flex-1 p-4"><h3 className="font-heading text-sm font-semibold">{member.name}</h3><p className="mt-3 text-xs text-muted-foreground">Ocupação · {member.occupancy}%</p><Progress value={member.occupancy} className="mt-2 h-1 [&>div]:bg-brand" />{canViewFinance ? <p className="mt-4 font-mono text-sm">{euro(member.revenue)} <span className="font-sans text-[10px] text-muted-foreground">no mês</span></p> : null}</div>
             </article>
           ))}
           {!data.staff.length ? <p className="py-5 text-sm text-muted-foreground">Sua equipe aparecerá aqui quando estiver cadastrada.</p> : null}
@@ -112,10 +113,10 @@ export default async function DashboardPage() {
       </section>
 
       {canViewFinance ? <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(250px,.6fr)]">
-        <Card className="dashboard-card min-w-0"><CardHeader><CardTitle className="font-heading text-lg">Faturamento em movimento</CardTitle><CardDescription>Receita dos últimos 14 dias.</CardDescription></CardHeader><CardContent>{hasRevenue ? <RevenueChart data={data.revenueTrend} /> : <div className="flex items-center gap-4 rounded-xl bg-white/3 p-5"><TrendingUp className="size-6 shrink-0 text-muted-foreground" /><p className="text-sm leading-6 text-muted-foreground">Ainda não há receita neste período. O gráfico aparece conforme os atendimentos e as vendas são registrados.</p></div>}</CardContent></Card>
+        <Card className="dashboard-card min-w-0"><CardHeader><CardTitle className="font-heading text-lg">Faturamento em movimento</CardTitle><CardDescription>Receita dos últimos 14 dias.</CardDescription></CardHeader><CardContent>{hasRevenue ? <RevenueChart data={data.revenueTrend} /> : <div className="flex items-center gap-4 rounded-xl bg-white/3 p-5"><span className="icon-tile size-10 shrink-0"><TrendingUp className="size-5" /></span><p className="text-sm leading-6 text-muted-foreground">Ainda não há receita neste período. O gráfico aparece conforme os atendimentos e as vendas são registrados.</p></div>}</CardContent></Card>
         <Card className="dashboard-card"><CardHeader><CardTitle className="font-heading text-lg">Resultados registrados</CardTitle><CardDescription>Sinais, fila de espera e campanhas.</CardDescription></CardHeader><CardContent><p className="font-heading mb-4 text-3xl font-semibold tracking-tight">{euro(data.impact.total)}</p>{[["Sinais", data.impact.deposits], ["Fila de espera", data.impact.waitlist], ["Campanhas", data.impact.campaigns]].map(([label, value]) => <div key={String(label)} className="flex items-center justify-between border-t border-white/8 py-2.5 text-xs"><span className="text-muted-foreground">{label}</span><span className="font-mono">{euro(Number(value))}</span></div>)}</CardContent></Card>
       </section> : null}
-      {canViewInsights ? <section className="grid gap-3 md:grid-cols-2" aria-label="Lembretes da operação">{data.insights.map((insight) => <div key={insight.title} className="flex gap-3 rounded-xl border border-white/8 p-4"><span className="mt-0.5 text-muted-foreground">{insight.kind === "warning" ? <CircleAlert className="size-4" /> : <Scissors className="size-4" />}</span><div><p className="text-sm font-medium">{insight.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p></div></div>)}</section> : null}
+      {canViewInsights ? <section className="grid gap-3 md:grid-cols-2" aria-label="Lembretes da operação">{data.insights.map((insight) => <div key={insight.title} className="flex gap-3 rounded-xl border border-white/8 p-4"><span className="icon-tile size-9 shrink-0">{insight.kind === "warning" ? <CircleAlert className="size-4" /> : <Scissors className="size-4" />}</span><div><p className="text-sm font-medium">{insight.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p></div></div>)}</section> : null}
     </div>
   );
 }

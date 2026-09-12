@@ -72,7 +72,7 @@ function NavLinks({ role, onNavigate }: { role: DemoSession["role"]; onNavigate?
         aria-current={active ? "page" : undefined}
         className={cn(
           "flex h-11 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
-          active ? "bg-surface-invert font-medium text-black" : "text-muted-foreground hover:bg-white/8 hover:text-white",
+          active ? "bg-brand/12 font-medium text-brand" : "text-muted-foreground hover:bg-white/8 hover:text-white",
         )}
       >
         <Icon className="size-4" />{item.label}
@@ -115,7 +115,7 @@ export function DashboardShell({ children, session, notificationCount }: { child
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-white/15 bg-sidebar p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden">
-        {primaryNavigation.filter((item) => authorize(session.role, item.permission)).slice(0, 4).map((item) => { const Icon = item.icon; return <Button key={item.href} asChild variant="ghost" size="icon"><Link href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={pathname === item.href ? "bg-surface-invert text-black hover:bg-surface-invert-muted hover:text-black" : "text-muted-foreground"}><Icon /><span className="sr-only">{item.label}</span></Link></Button>; })}
+        {primaryNavigation.filter((item) => authorize(session.role, item.permission)).slice(0, 4).map((item) => { const Icon = item.icon; return <Button key={item.href} asChild variant="ghost" size="icon"><Link href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={pathname === item.href ? "bg-brand/12 text-brand hover:bg-brand/20 hover:text-brand" : "text-muted-foreground"}><Icon /><span className="sr-only">{item.label}</span></Link></Button>; })}
       </nav>
     </div>
   );
