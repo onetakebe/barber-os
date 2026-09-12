@@ -159,11 +159,11 @@
   color: var(--foreground);
 }
 
-/* Fundo do painel: o pôr do sol com montanha listrada escolhido pelo usuário em 12/09 (original 300×585, ampliado),
+/* Fundo do painel: a seda escura com brasa laranja escolhida pelo usuário em 12/09 (736×1472),
    fixa no viewport, atrás de tudo. Sidebar, header e área de trabalho ficam
    semitransparentes para a onda atravessar; os cards continuam opacos. */
 .dashboard-shell::before {
-  background: url("/images/dashboard-sunset.jpg") center 40% / cover no-repeat;
+  background: url("/images/dashboard-ember.jpg") center center / cover no-repeat;
   content: "";
   inset: 0;
   pointer-events: none;
