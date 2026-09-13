@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { authenticateCandidate } from "@/server/auth/service";
 import { createDatabaseSession, sessionCookie } from "@/server/auth/session";
+import { clearPendingSocialProfile, readPendingSocialProfile } from "@/server/auth/social-pending";
 import { db } from "@/server/db";
 
 export type AuthActionState = {
@@ -33,6 +34,14 @@ const signupSchema = z.object({
   confirmPassword: z.string(),
   terms: z.literal("on", { error: "Aceite os termos para continuar." }),
 }).refine((data) => data.password === data.confirmPassword, { path: ["confirmPassword"], message: "As senhas não coincidem." });
+
+// Cadastro vindo do login social: o provedor já deu e-mail (e às vezes nome); não há senha.
+const socialSignupSchema = z.object({
+  firstName: z.string().trim().min(2, "Informe seu nome."),
+  lastName: z.string().trim().min(2, "Informe seu sobrenome."),
+  businessName: z.string().trim().min(2, "Informe o nome da barbearia."),
+  terms: z.literal("on", { error: "Aceite os termos para continuar." }),
+});
 
 const recoverSchema = z.object({ email: z.email().trim().toLowerCase() });
 
@@ -97,31 +106,48 @@ export async function signupAction(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const parsed = signupSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
+  const social = formData.get("social") === "1" ? await readPendingSocialProfile() : null;
+  if (formData.get("social") === "1" && !social) {
+    return { status: "error", message: "O login social expirou. Tente entrar de novo." };
+  }
 
-  const existing = await db.user.findUnique({ where: { email: parsed.data.email }, select: { id: true } });
+  let data: { firstName: string; lastName: string; businessName: string; email: string; password: string | null };
+  if (social) {
+    const parsed = socialSignupSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
+    if (!social.email) return { status: "error", message: `${social.provider} não compartilhou um e-mail. Use outra forma de entrar.` };
+    data = { ...parsed.data, email: social.email.toLowerCase(), password: null };
+  } else {
+    const parsed = signupSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
+    data = parsed.data;
+  }
+
+  const existing = await db.user.findUnique({ where: { email: data.email }, select: { id: true } });
   if (existing) return { status: "error", message: "Já existe uma conta com este e-mail." };
 
-  const passwordHash = await hash(parsed.data.password, 12);
-  const slugBase = slugify(parsed.data.businessName);
+  const passwordHash = data.password ? await hash(data.password, 12) : null;
+  const slugBase = slugify(data.businessName);
   const slugExists = await db.tenant.findUnique({ where: { slug: slugBase }, select: { id: true } });
   const slug = slugExists ? `${slugBase}-${crypto.randomUUID().slice(0, 6)}` : slugBase;
 
   const created = await db.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
-        email: parsed.data.email,
-        firstName: parsed.data.firstName,
-        lastName: parsed.data.lastName,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
         passwordHash,
+        imageUrl: social?.imageUrl ?? null,
+        emailVerified: social?.emailVerified ? new Date() : null,
+        accounts: social ? { create: { type: "oauth", provider: social.provider, providerAccountId: social.providerAccountId } } : undefined,
       },
     });
     const tenant = await tx.tenant.create({
       data: {
-        name: parsed.data.businessName,
+        name: data.businessName,
         slug,
-        email: parsed.data.email,
+        email: data.email,
         units: {
           create: {
             name: "Unidade principal",
@@ -137,6 +163,7 @@ export async function signupAction(
     return { userId: user.id, tenantId: tenant.id };
   });
 
+  if (social) await clearPendingSocialProfile();
   await writeSessionCookie(created.userId, created.tenantId);
   redirect("/configuracoes");
 }

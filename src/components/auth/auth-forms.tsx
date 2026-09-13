@@ -52,19 +52,28 @@ export function LoginForm() {
   );
 }
 
-export function SignupForm() {
+export type SocialPrefill = { provider: string; email: string; firstName: string; lastName: string };
+
+export function SignupForm({ social = null }: { social?: SocialPrefill | null }) {
   const [state, action, pending] = useActionState(signupAction, initialAuthState);
   return (
     <form action={action} className="flex flex-col gap-3.5">
+      {social ? <input type="hidden" name="social" value="1" /> : null}
       {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
       <div className="grid gap-3.5 sm:grid-cols-2">
-        <FieldBox id="firstName" label="Nome" error={state.errors?.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" required className={boxInput} /></FieldBox>
-        <FieldBox id="lastName" label="Sobrenome" error={state.errors?.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" required className={boxInput} /></FieldBox>
+        <FieldBox id="firstName" label="Nome" error={state.errors?.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" defaultValue={social?.firstName} required className={boxInput} /></FieldBox>
+        <FieldBox id="lastName" label="Sobrenome" error={state.errors?.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" defaultValue={social?.lastName} required className={boxInput} /></FieldBox>
       </div>
       <FieldBox id="businessName" label="Nome da barbearia" error={state.errors?.businessName}><Input id="businessName" name="businessName" autoComplete="organization" required className={boxInput} /></FieldBox>
-      <FieldBox id="signupEmail" label="E-mail" error={state.errors?.email}><Input id="signupEmail" name="email" type="email" autoComplete="email" required className={boxInput} /></FieldBox>
-      <FieldBox id="signupPassword" label="Senha" error={state.errors?.password}><Input id="signupPassword" name="password" type="password" autoComplete="new-password" placeholder="Mín. 8 caracteres, letra e número" required className={boxInput} /></FieldBox>
-      <FieldBox id="confirmPassword" label="Confirmar senha" error={state.errors?.confirmPassword}><Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required className={boxInput} /></FieldBox>
+      {social ? (
+        <FieldBox id="signupEmail" label="E-mail"><Input id="signupEmail" type="email" value={social.email} readOnly className={`${boxInput} text-muted-foreground`} /></FieldBox>
+      ) : (
+        <>
+          <FieldBox id="signupEmail" label="E-mail" error={state.errors?.email}><Input id="signupEmail" name="email" type="email" autoComplete="email" required className={boxInput} /></FieldBox>
+          <FieldBox id="signupPassword" label="Senha" error={state.errors?.password}><Input id="signupPassword" name="password" type="password" autoComplete="new-password" placeholder="Mín. 8 caracteres, letra e número" required className={boxInput} /></FieldBox>
+          <FieldBox id="confirmPassword" label="Confirmar senha" error={state.errors?.confirmPassword}><Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required className={boxInput} /></FieldBox>
+        </>
+      )}
       <label htmlFor="terms" className="flex items-start gap-3 px-1 text-xs text-muted-foreground">
         <Checkbox id="terms" name="terms" required className="mt-0.5" />
         <span>Aceito os termos e a política de privacidade.{state.errors?.terms?.[0] ? <span className="block text-destructive">{state.errors.terms[0]}</span> : null}</span>
