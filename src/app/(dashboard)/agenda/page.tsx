@@ -1,7 +1,7 @@
 import { authorize } from "@/domain/auth/permissions";
 import { AgendaWorkspace } from "@/components/dashboard/agenda-workspace";
 import { requirePermission } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { getBookableDates } from "@/server/data/public-booking";
 
 function initials(name: string) { return name.split(" ").map((part) => part[0]).slice(0, 2).join(""); }
@@ -19,6 +19,7 @@ const gridStatuses = ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS", "COMP
 
 export default async function AgendaPage() {
   const session = await requirePermission("appointments:view");
+  const db = tenantDb(session.tenantId);
   const tenant = await db.tenant.findUniqueOrThrow({ where: { id: session.tenantId }, select: { timezone: true, slug: true } });
   const ownStaff = session.role === "PROFESSIONAL" ? await db.staff.findFirst({ where: { tenantId: session.tenantId, userId: session.userId, deletedAt: null }, select: { id: true } }) : null;
 

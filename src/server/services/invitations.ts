@@ -3,7 +3,7 @@ import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 import type { Role } from "@/domain/auth/permissions";
 import { canInviteRole, invitationExpiry, invitationStatus, nameFromInvitee } from "@/domain/team/invitations";
-import { db } from "@/server/db";
+import { adminDb, adminTransaction, tenantDb } from "@/server/db";
 import { createSupabaseAdminClient } from "@/server/supabase/server";
 
 
@@ -22,6 +22,7 @@ export type CreateInvitationResult = { kind: "emailed" } | { kind: "added" } | {
 export async function createInvitation(input: CreateInvitationInput): Promise<CreateInvitationResult> {
   const email = input.email.trim().toLowerCase();
   if (!canInviteRole(input.inviterRole, input.role)) return { kind: "error", message: "Você não pode convidar com esse perfil." };
+  const db = tenantDb(input.tenantId);
 
   const alreadyMember = await db.membership.findFirst({ where: { tenantId: input.tenantId, user: { email } }, select: { id: true, isActive: true } });
   if (alreadyMember?.isActive) return { kind: "error", message: "Essa pessoa já faz parte da equipe." };
@@ -38,7 +39,7 @@ export async function createInvitation(input: CreateInvitationInput): Promise<Cr
   });
 
   // Já tem perfil no app (e-mail confirmado no Supabase) → entra direto.
-  const existing = await db.user.findUnique({ where: { email }, select: { id: true, authUserId: true } });
+  const existing = await adminDb.user.findUnique({ where: { email }, select: { id: true, authUserId: true } });
   if (existing?.authUserId) {
     await acceptInvitationForUser(invitation.id, existing.id);
     return { kind: "added" };
@@ -59,9 +60,10 @@ export async function createInvitation(input: CreateInvitationInput): Promise<Cr
 }
 
 async function acceptInvitationForUser(invitationId: string, userId: string) {
-  const invitation = await db.invitation.findUnique({ where: { id: invitationId } });
+  // Aceite cruza barbearias (o convidado ainda não pertence a nenhuma): contexto administrativo.
+  const invitation = await adminDb.invitation.findUnique({ where: { id: invitationId } });
   if (!invitation) return;
-  await db.$transaction(async (tx) => {
+  await adminTransaction(async (tx) => {
     await tx.membership.upsert({
       where: { tenantId_userId: { tenantId: invitation.tenantId, userId } },
       update: { role: invitation.role, isActive: true },
@@ -79,11 +81,11 @@ async function acceptInvitationForUser(invitationId: string, userId: string) {
 export async function acceptPendingInvitations(authUser: SupabaseUser): Promise<boolean> {
   if (!authUser.email || !authUser.email_confirmed_at) return false;
   const email = authUser.email.toLowerCase();
-  const pending = await db.invitation.findMany({ where: { email, acceptedAt: null, expiresAt: { gt: new Date() } } });
+  const pending = await adminDb.invitation.findMany({ where: { email, acceptedAt: null, expiresAt: { gt: new Date() } } });
   if (!pending.length) return false;
 
   const name = nameFromInvitee(email, (authUser.user_metadata ?? {}) as Record<string, unknown>);
-  const user = await db.user.upsert({
+  const user = await adminDb.user.upsert({
     where: { email },
     update: { authUserId: authUser.id },
     create: { email, authUserId: authUser.id, firstName: name.firstName, lastName: name.lastName, emailVerified: new Date() },
@@ -94,6 +96,7 @@ export async function acceptPendingInvitations(authUser: SupabaseUser): Promise<
 }
 
 export async function resendInvitation(tenantId: string, invitationId: string): Promise<CreateInvitationResult> {
+  const db = tenantDb(tenantId);
   const invitation = await db.invitation.findFirst({ where: { id: invitationId, tenantId, acceptedAt: null } });
   if (!invitation) return { kind: "error", message: "Convite não encontrado." };
   await db.invitation.update({ where: { id: invitation.id }, data: { expiresAt: invitationExpiry() } });
@@ -109,10 +112,11 @@ export async function resendInvitation(tenantId: string, invitationId: string): 
 }
 
 export async function cancelInvitation(tenantId: string, invitationId: string) {
-  await db.invitation.deleteMany({ where: { id: invitationId, tenantId, acceptedAt: null } });
+  await tenantDb(tenantId).invitation.deleteMany({ where: { id: invitationId, tenantId, acceptedAt: null } });
 }
 
 export async function listTeamAccess(tenantId: string) {
+  const db = tenantDb(tenantId);
   const [members, invitations] = await Promise.all([
     db.membership.findMany({ where: { tenantId }, orderBy: { createdAt: "asc" }, select: { id: true, role: true, isActive: true, user: { select: { firstName: true, lastName: true, email: true, imageUrl: true } } } }),
     db.invitation.findMany({ where: { tenantId, acceptedAt: null }, orderBy: { createdAt: "desc" }, select: { id: true, email: true, role: true, expiresAt: true, acceptedAt: true, staff: { select: { displayName: true } } } }),

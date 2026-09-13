@@ -1,4 +1,4 @@
-import { db } from "@/server/db";
+import { tenantDb } from "@/server/db";
 import { getPublicAvailability } from "@/server/data/public-booking";
 import { localDateTimeToUtc } from "@/server/services/availability";
 
@@ -15,6 +15,7 @@ function addDays(date: string, amount: number) {
 function initials(name: string) { return name.split(" ").map((part) => part[0]).slice(0, 2).join(""); }
 
 export async function getDashboardData(tenantId: string, options: { professionalStaffId?: string | null; canViewFinance: boolean }) {
+  const db = tenantDb(tenantId);
   const tenant = await db.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true, timezone: true } });
   const now = new Date();
   const today = localDate(now, tenant.timezone);

@@ -1,5 +1,5 @@
 import type { Permission } from "@/domain/auth/permissions";
-import { db } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 export const moduleMeta = {
   agendamentos: { title: "Agendamentos", description: "Acompanhe reservas, sinais e status em um só lugar.", columns: ["Horário", "Cliente", "Serviço", "Profissional", "Status"], action: "Novo agendamento", permission: "appointments:view" },
@@ -37,6 +37,7 @@ const dateTime = (value: Date, timezone: string) => new Intl.DateTimeFormat("pt-
 const dateOnly = (value: Date | null, timezone: string) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: timezone }).format(value) : "—";
 
 export async function getModuleData(module: ModuleSlug, tenantId: string, professionalStaffId?: string | null): Promise<ModuleData> {
+  const db = tenantDb(tenantId);
   const restrictToProfessional = professionalStaffId !== undefined;
   const staffId = professionalStaffId ?? "__unlinked_professional__";
   const appointmentScope = restrictToProfessional ? { staffId } : {};

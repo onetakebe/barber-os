@@ -2,7 +2,7 @@ import { cache } from "react";
 
 import { canLinkByEmail, identityFromMemberships, type AuthenticatedIdentity } from "@/server/auth/identity";
 import { createSupabaseServerClient } from "@/server/supabase/server";
-import { db } from "@/server/db";
+import { adminDb as db } from "@/server/db";
 import { acceptPendingInvitations } from "@/server/services/invitations";
 
 export type AppSession = AuthenticatedIdentity;

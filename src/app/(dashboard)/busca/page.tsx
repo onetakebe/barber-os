@@ -4,10 +4,11 @@ import { CalendarDays, Users } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requirePermission } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await requirePermission("customers:view");
+  const db = tenantDb(session.tenantId);
   const { q = "" } = await searchParams;
   const query = q.trim();
   const professionalStaff = session.role === "PROFESSIONAL" ? await db.staff.findFirst({ where: { tenantId: session.tenantId, userId: session.userId, deletedAt: null }, select: { id: true } }) : undefined;

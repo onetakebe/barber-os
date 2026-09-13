@@ -6,7 +6,7 @@ import { z } from "zod";
 import { mapSignInError } from "@/server/auth/identity";
 import { getAuthUser, getSession } from "@/server/auth/session";
 import { createSupabaseServerClient } from "@/server/supabase/server";
-import { db } from "@/server/db";
+import { adminDb as db, adminTransaction } from "@/server/db";
 
 export type AuthActionState = {
   status: "idle" | "error" | "success";
@@ -92,7 +92,7 @@ async function createOwnerWorkspace(input: { authUserId: string; email: string; 
   const slugExists = await db.tenant.findUnique({ where: { slug: slugBase }, select: { id: true } });
   const slug = slugExists ? `${slugBase}-${crypto.randomUUID().slice(0, 6)}` : slugBase;
 
-  return db.$transaction(async (tx) => {
+  return adminTransaction(async (tx) => {
     const user = await tx.user.upsert({
       where: { email: input.email },
       update: { authUserId: input.authUserId, firstName: input.firstName, lastName: input.lastName },

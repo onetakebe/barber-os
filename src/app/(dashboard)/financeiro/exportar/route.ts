@@ -1,6 +1,6 @@
 import { authorize } from "@/domain/auth/permissions";
 import { getSession } from "@/server/auth/session";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 
 function csvCell(value: string | number) {
   return `"${String(value).replaceAll('"', '""')}"`;
@@ -10,6 +10,7 @@ export async function GET() {
   const session = await getSession();
   if (!session) return new Response("Não autenticado", { status: 401 });
   if (!authorize(session.role, "finance:view")) return new Response("Sem permissão", { status: 403 });
+  const db = tenantDb(session.tenantId);
 
   const [payments, sales, expenses] = await Promise.all([
     db.payment.findMany({ where: { tenantId: session.tenantId }, orderBy: { createdAt: "desc" }, select: { id: true, createdAt: true, amountCents: true, status: true, method: true } }),

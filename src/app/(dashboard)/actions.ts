@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import type { Permission } from "@/domain/auth/permissions";
 import { AuthorizationError, authorizeAction } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 
 export type ModuleActionState = {
   status: "idle" | "success" | "error";
@@ -59,6 +59,7 @@ export async function createModuleRecordAction(
 
   try {
     const session = await authorizeAction(permissions[slug]);
+    const db = tenantDb(session.tenantId);
     let entityId = "";
 
     if (parsed.data.module === "clientes") {
@@ -78,7 +79,7 @@ export async function createModuleRecordAction(
     }
     if (parsed.data.module === "produtos") {
       const productData = parsed.data;
-      const created = await db.$transaction(async (tx) => {
+      const created = await tenantTransaction(session.tenantId, async (tx) => {
         const product = await tx.product.create({ data: { tenantId: session.tenantId, name: productData.name, sku: productData.sku.toUpperCase(), category: productData.category, priceCents: Math.round(productData.price * 100), costCents: Math.round(productData.cost * 100), stock: productData.stock, minimumStock: productData.minimumStock } });
         if (productData.stock > 0) await tx.inventoryMovement.create({ data: { tenantId: session.tenantId, productId: product.id, type: "PURCHASE", quantity: productData.stock, reason: "Estoque inicial" } });
         return product;
@@ -125,6 +126,7 @@ export async function updateModuleRecordAction(
 
   try {
     const session = await authorizeAction(permissions[slug]);
+    const db = tenantDb(session.tenantId);
     let previous: Record<string, string | number | null> | null = null;
 
     if (parsed.data.module === "clientes") {
@@ -167,7 +169,7 @@ export async function updateModuleRecordAction(
         select: { name: true, sku: true, category: true, priceCents: true, costCents: true, stock: true, minimumStock: true },
       });
       previous = current;
-      if (current) await db.$transaction(async (tx) => {
+      if (current) await tenantTransaction(session.tenantId, async (tx) => {
         await tx.product.updateMany({
           where: { id: identity.data.id, tenantId: session.tenantId, deletedAt: null },
           data: { name: productData.name, sku: productData.sku.toUpperCase(), category: productData.category, priceCents: Math.round(productData.price * 100), costCents: Math.round(productData.cost * 100), stock: productData.stock, minimumStock: productData.minimumStock },
@@ -210,11 +212,12 @@ export async function updateSettingsAction(
   if (!parsed.success) return { status: "error", errors: validationErrors(parsed.error) };
   try {
     const session = await authorizeAction("settings:edit");
+    const db = tenantDb(session.tenantId);
     const previous = await db.tenant.findUniqueOrThrow({ where: { id: session.tenantId }, select: { name: true, address: true, phone: true, defaultDepositCents: true, cancellationNoticeHours: true } });
-    await db.$transaction([
-      db.tenant.update({ where: { id: session.tenantId }, data: { name: parsed.data.name, address: parsed.data.address, phone: parsed.data.phone, defaultDepositCents: Math.round(parsed.data.defaultDeposit * 100), cancellationNoticeHours: parsed.data.cancellationNoticeHours } }),
-      db.auditLog.create({ data: { tenantId: session.tenantId, userId: session.userId, action: "UPDATE", entityType: "Tenant", entityId: session.tenantId, previousValue: previous, newValue: parsed.data } }),
-    ]);
+    await tenantTransaction(session.tenantId, async (tx) => {
+      await tx.tenant.update({ where: { id: session.tenantId }, data: { name: parsed.data.name, address: parsed.data.address, phone: parsed.data.phone, defaultDepositCents: Math.round(parsed.data.defaultDeposit * 100), cancellationNoticeHours: parsed.data.cancellationNoticeHours } });
+      await tx.auditLog.create({ data: { tenantId: session.tenantId, userId: session.userId, action: "UPDATE", entityType: "Tenant", entityId: session.tenantId, previousValue: previous, newValue: parsed.data } });
+    });
     revalidatePath("/configuracoes");
     revalidatePath(`/barbearia/${session.tenantSlug}`);
     return { status: "success", message: "Configurações salvas no banco." };
@@ -233,6 +236,7 @@ export async function archiveModuleRecordAction(_state: ModuleActionState, formD
   const permission = permissions[parsed.data.module];
   try {
     const session = await authorizeAction(permission);
+    const db = tenantDb(session.tenantId);
     const now = new Date();
     let count = 0;
     if (parsed.data.module === "clientes") count = (await db.customer.updateMany({ where: { id: parsed.data.id, tenantId: session.tenantId, deletedAt: null }, data: { deletedAt: now, status: "ARCHIVED" } })).count;
@@ -257,7 +261,8 @@ export async function adjustInventoryAction(_state: ModuleActionState, formData:
   if (!parsed.success) return { status: "error", errors: validationErrors(parsed.error) };
   try {
     const session = await authorizeAction("products:edit");
-    await db.$transaction(async (tx) => {
+    const db = tenantDb(session.tenantId);
+    await tenantTransaction(session.tenantId, async (tx) => {
       const product = await tx.product.findFirst({ where: { id: parsed.data.productId, tenantId: session.tenantId, deletedAt: null }, select: { id: true, stock: true } });
       if (!product) throw new Error("PRODUCT_NOT_FOUND");
       if (product.stock + parsed.data.quantity < 0) throw new Error("NEGATIVE_STOCK");
@@ -282,11 +287,12 @@ export async function redeemRewardAction(_state: ModuleActionState, formData: Fo
   if (!parsed.success) return { status: "error", message: "Cliente inválido." };
   try {
     const session = await authorizeAction("loyalty:edit");
+    const db = tenantDb(session.tenantId);
     const customer = await db.customer.findFirst({ where: { id: parsed.data.customerId, tenantId: session.tenantId, deletedAt: null }, select: { id: true, loyaltyPoints: true } });
     if (!customer) return { status: "error", message: "Cliente não encontrado." };
     const reward = await db.reward.findFirst({ where: { tenantId: session.tenantId, isActive: true, pointsCost: { lte: customer.loyaltyPoints } }, orderBy: { pointsCost: "desc" } });
     if (!reward) return { status: "error", message: "Saldo insuficiente para as recompensas ativas." };
-    await db.$transaction(async (tx) => {
+    await tenantTransaction(session.tenantId, async (tx) => {
       const updated = await tx.customer.updateMany({ where: { id: customer.id, tenantId: session.tenantId, loyaltyPoints: { gte: reward.pointsCost } }, data: { loyaltyPoints: { decrement: reward.pointsCost } } });
       if (!updated.count) throw new Error("INSUFFICIENT_POINTS");
       await tx.loyaltyTransaction.create({ data: { tenantId: session.tenantId, customerId: customer.id, type: "REDEEM", points: -reward.pointsCost, description: `Resgate: ${reward.name}` } });

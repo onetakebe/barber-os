@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant } from "@/server/data/public-booking";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
 
@@ -26,6 +26,7 @@ export type CreateInternalBookingInput = {
  * não por consulta prévia, então sobrevive a duas recepcionistas marcando ao mesmo tempo.
  */
 export async function createInternalBooking(input: CreateInternalBookingInput) {
+  const db = tenantDb(input.tenantId);
   const service = await db.service.findFirst({
     where: { id: input.serviceId, tenantId: input.tenantId, isActive: true, deletedAt: null },
     select: { id: true, name: true, priceCents: true, durationMinutes: true },
@@ -44,7 +45,7 @@ export async function createInternalBooking(input: CreateInternalBookingInput) {
   const appointmentId = randomUUID();
 
   try {
-    return await db.$transaction(async (tx) => {
+    return await tenantTransaction(input.tenantId, async (tx) => {
       const customer = await tx.customer.upsert({
         where: { tenantId_phone: { tenantId: input.tenantId, phone: input.phone } },
         update: { firstName: input.firstName, lastName: input.lastName },

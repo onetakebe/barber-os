@@ -6,13 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Progress } from "@/components/ui/progress";
 import { authorize } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 
 function minuteToTime(minute: number) { return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`; }
 const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR" }).format(cents / 100);
 
 export default async function WaitlistPage() {
   const session = await requirePermission("waitlist:view");
+  const db = tenantDb(session.tenantId);
   const canEdit = authorize(session.role, "waitlist:edit");
   const [entries, customers, services, staff, accepted] = await Promise.all([
     db.waitlistEntry.findMany({ where: { tenantId: session.tenantId, status: { in: ["WAITING", "OFFERED"] } }, orderBy: [{ priorityScore: "desc" }, { createdAt: "asc" }], include: { customer: true, service: true, staff: true } }),

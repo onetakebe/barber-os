@@ -6,7 +6,7 @@ import { listTeamAccess } from "@/server/services/invitations";
 import { ModuleTable } from "@/components/dashboard/module-table";
 import { authorize, type Permission } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { getModuleData, moduleMeta, type ModuleSlug } from "@/server/data/module-data";
 
 const mutatePermissions: Record<ModuleSlug, Permission> = {
@@ -26,6 +26,7 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   if (!(module in moduleMeta)) notFound();
   const slug = module as ModuleSlug;
   const session = await requirePermission(moduleMeta[slug].permission);
+  const db = tenantDb(session.tenantId);
   const professionalStaff = session.role === "PROFESSIONAL" ? await db.staff.findFirst({ where: { tenantId: session.tenantId, userId: session.userId, deletedAt: null }, select: { id: true } }) : undefined;
   const definition = await getModuleData(slug, session.tenantId, professionalStaff?.id ?? (session.role === "PROFESSIONAL" ? null : undefined));
   const canMutate = authorize(session.role, mutatePermissions[slug]);
@@ -58,6 +59,7 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
 
 async function TeamAccessSection({ tenantId, canInvite }: { tenantId: string; canInvite: boolean }) {
   const access = await listTeamAccess(tenantId);
+  const db = tenantDb(tenantId);
   // Profissionais da agenda ainda sem login, para vincular ao convite.
   const staff = canInvite ? await db.staff.findMany({ where: { tenantId, deletedAt: null, userId: null }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }) : [];
   return <TeamAccess data={{ ...access, staffOptions: staff.map((item) => ({ id: item.id, name: item.displayName })) }} canInvite={canInvite} />;
