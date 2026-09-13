@@ -4,7 +4,7 @@ import { CalendarDays, Users } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requirePermission } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await requirePermission("customers:view");

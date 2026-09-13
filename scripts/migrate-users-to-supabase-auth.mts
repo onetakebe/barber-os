@@ -18,7 +18,8 @@ const OWNER_EMAIL = "guilhermeverdonck3@gmail.com";
 const secret = process.env.SUPABASE_SECRET_KEY;
 if (!secret) throw new Error("SUPABASE_SECRET_KEY ausente no .env");
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, secret, { auth: { autoRefreshToken: false, persistSession: false } });
-const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
+// Escreve em várias barbearias: papel postgres (DIRECT_URL), fora da trava.
+const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! }) });
 
 async function findAuthUserByEmail(email: string) {
   let page = 1;

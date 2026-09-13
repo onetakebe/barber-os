@@ -1,7 +1,7 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { authorize } from "@/domain/auth/permissions";
 import { requireSession } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();

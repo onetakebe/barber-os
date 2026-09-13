@@ -6,7 +6,8 @@ import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { AppointmentStatus, CampaignStatus, LoyaltyTransactionType, NotificationChannel, NotificationStatus, PaymentMethod, PaymentStatus, Role, WaitlistStatus } from "../src/generated/prisma/enums";
 
-const connectionString = process.env.DATABASE_URL;
+// Seed e scripts administrativos gravam em várias barbearias: papel postgres (DIRECT_URL), que ignora a trava.
+const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL_MISSING");
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });

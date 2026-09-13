@@ -6,7 +6,7 @@ import { listTeamAccess } from "@/server/services/invitations";
 import { ModuleTable } from "@/components/dashboard/module-table";
 import { authorize, type Permission } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 import { getModuleData, moduleMeta, type ModuleSlug } from "@/server/data/module-data";
 
 const mutatePermissions: Record<ModuleSlug, Permission> = {

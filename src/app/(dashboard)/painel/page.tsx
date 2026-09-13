@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { authorize } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
 import { getDashboardData } from "@/server/data/dashboard";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 // Um ícone por indicador, na ordem em que getDashboardData os devolve.
 const metricIcons = [TrendingUp, CalendarClock, Clock3, Users];

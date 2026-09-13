@@ -1,7 +1,7 @@
 import { authorize } from "@/domain/auth/permissions";
 import { AgendaWorkspace } from "@/components/dashboard/agenda-workspace";
 import { requirePermission } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 import { getBookableDates } from "@/server/data/public-booking";
 
 function initials(name: string) { return name.split(" ").map((part) => part[0]).slice(0, 2).join(""); }

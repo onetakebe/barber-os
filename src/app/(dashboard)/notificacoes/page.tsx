@@ -3,7 +3,7 @@ import { Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { requirePermission } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 export default async function NotificationsPage() {
   const session = await requirePermission("customers:edit");

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Progress } from "@/components/ui/progress";
 import { authorize } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 function minuteToTime(minute: number) { return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`; }
 const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR" }).format(cents / 100);

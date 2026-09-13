@@ -1,6 +1,6 @@
 import { authorize } from "@/domain/auth/permissions";
 import { getSession } from "@/server/auth/session";
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 function csvCell(value: string | number) {
   return `"${String(value).replaceAll('"', '""')}"`;
