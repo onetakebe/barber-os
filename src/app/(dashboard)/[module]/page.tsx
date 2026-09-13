@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { BadgeEuro, Boxes, CalendarCheck, CalendarDays, CheckCircle2, CircleAlert, Coins, Gift, Globe, Layers, Megaphone, Radio, Receipt, Repeat, Scale, Scissors, Sparkles, Tag, TrendingUp, UserCheck, Users, Wallet, type LucideIcon } from "lucide-react";
 
 import { ModuleAction } from "@/components/dashboard/module-action";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { TeamAccess } from "@/components/dashboard/team-access";
 import { listTeamAccess } from "@/server/services/invitations";
 import { ModuleTable } from "@/components/dashboard/module-table";
@@ -19,6 +21,19 @@ const mutatePermissions: Record<ModuleSlug, Permission> = {
   fidelidade: "loyalty:edit",
   financeiro: "finance:edit",
   relatorios: "finance:view",
+};
+
+// Um ícone por indicador, na ordem em que getModuleData devolve as estatísticas.
+const statIcons: Record<ModuleSlug, [LucideIcon, LucideIcon, LucideIcon]> = {
+  agendamentos: [CalendarDays, CalendarCheck, CheckCircle2],
+  clientes: [Users, UserCheck, Wallet],
+  equipe: [Users, Globe, CalendarCheck],
+  servicos: [Scissors, Sparkles, Tag],
+  produtos: [Boxes, Layers, CircleAlert],
+  campanhas: [Megaphone, Radio, BadgeEuro],
+  fidelidade: [Users, Gift, Repeat],
+  financeiro: [TrendingUp, Receipt, Scale],
+  relatorios: [TrendingUp, Receipt, Coins],
 };
 
 export default async function ModulePage({ params }: { params: Promise<{ module: string }> }) {
@@ -42,13 +57,10 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
         <ModuleAction module={slug} label={definition.action} canMutate={canMutate} />
       </section>
 
+      {/* O primeiro indicador é o mais relevante do módulo e leva o degradê do acento:
+          esta tela não tem hero, então ele é o único bloco saturado. */}
       <section className="grid gap-4 sm:grid-cols-3">
-        {definition.stats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-white/12 bg-surface-panel px-7 py-8">
-            <p className="font-mono text-[10px] uppercase tracking-[.18em] text-white/55">{stat.label}</p>
-            <p className="font-display mt-4 text-4xl tracking-[-.05em]">{stat.value}</p>
-          </div>
-        ))}
+        {definition.stats.map((stat, index) => <StatCard key={stat.label} icon={statIcons[slug][index] ?? TrendingUp} label={stat.label} value={stat.value} hint={stat.hint} tone={index === 0 ? "accent" : "plain"} />)}
       </section>
 
       <ModuleTable module={slug} columns={definition.columns} rows={definition.rows} canMutate={canMutate} />

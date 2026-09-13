@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarClock, CircleAlert, Clock3, Scissors, TrendingUp, Users } from "lucide-react";
 
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
+import { StatCard } from "@/components/dashboard/stat-card";
 import { QuickAppointment } from "@/components/dashboard/quick-action";
 import { StaffPhoto } from "@/components/staff-photo";
 import { StaffAvatar } from "@/components/staff-avatar";
@@ -13,6 +14,7 @@ import { authorize } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
 import { getDashboardData } from "@/server/data/dashboard";
 import { tenantDb } from "@/server/db";
+import { cn } from "@/lib/utils";
 
 // Um ícone por indicador, na ordem em que getDashboardData os devolve.
 const metricIcons = [TrendingUp, CalendarClock, Clock3, Users];
@@ -88,23 +90,20 @@ export default async function DashboardPage() {
         </div>
       </section>
 
+      {/* O hero acima já é o bloco saturado da tela; "Reservas hoje" é o indicador
+          operacional e leva o degradê escuro-quente, os outros ficam lisos. */}
       <section aria-label="Resumo da operação" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {data.metrics.map((metric, index) => {
-          const Icon = metricIcons[index] ?? TrendingUp;
-          return (
-            <div key={metric.label} className="dashboard-card flex min-w-0 flex-col gap-3 px-4 pb-3.5 pt-4 sm:px-5">
-              <div className="flex items-center gap-2.5">
-                <span className="icon-tile size-8 shrink-0"><Icon className="size-4" /></span>
-                <p className="truncate text-xs text-muted-foreground">{metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}</p>
-              </div>
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <p className="font-heading text-[28px] font-semibold leading-none tracking-[-.045em]">{metric.value}</p>
-                <p className="text-[11px] text-muted-foreground">{metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada" : metric.change}</p>
-              </div>
-              <MetricSignal index={index} data={data} canViewFinance={canViewFinance} />
-            </div>
-          );
-        })}
+        {data.metrics.map((metric, index) => (
+          <StatCard
+            key={metric.label}
+            icon={metricIcons[index] ?? TrendingUp}
+            label={metric.label === "Ocupação calculada" ? "Ocupação da equipe" : metric.label}
+            value={metric.value}
+            hint={metric.change === "no tenant" ? "na sua barbearia" : metric.change === "pela jornada" ? "sobre a jornada" : metric.change}
+            tone={index === 1 ? "featured" : "plain"}
+            signal={<MetricSignal index={index} data={data} canViewFinance={canViewFinance} />}
+          />
+        ))}
       </section>
 
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_270px]">
@@ -155,7 +154,7 @@ export default async function DashboardPage() {
         </div>
         <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
           {data.staff.map((member) => (
-            <article key={member.id} className="flex min-w-0 overflow-hidden rounded-xl border border-white/8 bg-surface-raised">
+            <article key={member.id} className="choice-card flex min-w-0 overflow-hidden">
               <div className="relative w-24 shrink-0 self-stretch bg-black/10 sm:w-28">
                 {member.imageUrl ? <StaffPhoto src={member.imageUrl} alt={member.name} sizes="112px" className="object-cover object-top" /> : <div className="flex h-full min-h-36 items-center justify-center"><StaffAvatar imageUrl={null} initials={member.initials} className="size-12" /></div>}
               </div>
@@ -170,7 +169,7 @@ export default async function DashboardPage() {
         <Card className="dashboard-card min-w-0"><CardHeader><CardTitle className="font-heading text-lg">Faturamento em movimento</CardTitle><CardDescription>Receita dos últimos 14 dias.</CardDescription></CardHeader><CardContent>{hasRevenue ? <RevenueChart data={data.revenueTrend} /> : <div className="flex items-center gap-4 rounded-xl bg-white/3 p-5"><span className="icon-tile size-10 shrink-0"><TrendingUp className="size-5" /></span><p className="text-sm leading-6 text-muted-foreground">Ainda não há receita neste período. O gráfico aparece conforme os atendimentos e as vendas são registrados.</p></div>}</CardContent></Card>
         <Card className="dashboard-card"><CardHeader><CardTitle className="font-heading text-lg">Resultados registrados</CardTitle><CardDescription>Sinais, fila de espera e campanhas.</CardDescription></CardHeader><CardContent><p className="font-heading mb-4 text-3xl font-semibold tracking-tight">{euro(data.impact.total)}</p>{[["Sinais", data.impact.deposits], ["Fila de espera", data.impact.waitlist], ["Campanhas", data.impact.campaigns]].map(([label, value]) => <div key={String(label)} className="flex items-center justify-between border-t border-white/8 py-2.5 text-xs"><span className="text-muted-foreground">{label}</span><span className="font-mono">{euro(Number(value))}</span></div>)}</CardContent></Card>
       </section> : null}
-      {canViewInsights ? <section className="grid gap-3 md:grid-cols-2" aria-label="Lembretes da operação">{data.insights.map((insight) => <div key={insight.title} className="flex gap-3 rounded-xl border border-white/8 p-4"><span className="icon-tile size-9 shrink-0">{insight.kind === "warning" ? <CircleAlert className="size-4" /> : <Scissors className="size-4" />}</span><div><p className="text-sm font-medium">{insight.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p></div></div>)}</section> : null}
+      {canViewInsights ? <section className="grid gap-3 md:grid-cols-2" aria-label="Lembretes da operação">{data.insights.map((insight) => <div key={insight.title} className={cn("choice-card flex gap-3 p-4", insight.kind === "warning" && "choice-card--featured")}><span className="icon-tile size-9 shrink-0">{insight.kind === "warning" ? <CircleAlert className="size-4" /> : <Scissors className="size-4" />}</span><div><p className="text-sm font-medium">{insight.title}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p></div></div>)}</section> : null}
     </div>
   );
 }
