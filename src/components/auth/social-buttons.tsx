@@ -1,9 +1,10 @@
 import type { SocialProvider } from "@/server/auth/social";
-import { socialProviderLabels } from "@/server/auth/social";
+import { configuredSocialProviders, socialProviderLabels } from "@/server/auth/social";
 
-/* Marcas em traço único, monocromáticas — coerentes com o Grafite. Os três
-   botões aparecem sempre; um provedor sem credencial devolve o usuário ao
-   login com a mensagem "não configurado" em vez de sumir da tela. */
+/* Marcas em traço único, monocromáticas — coerentes com o Grafite. Só aparece
+   o provedor que tem credencial no ambiente (pedido de 13/09: sem botão de
+   Apple/Facebook enquanto não estiverem configurados). Com um só provedor o
+   botão ocupa a largura toda e ganha rótulo; com vários, vira a fileira de ícones. */
 const icons: Record<SocialProvider, React.ReactNode> = {
   google: (
     <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true" fill="currentColor">
@@ -26,23 +27,28 @@ const icons: Record<SocialProvider, React.ReactNode> = {
 };
 
 export function SocialButtons({ intent }: { intent: "entrar" | "criar" }) {
+  const providers = configuredSocialProviders();
+  if (!providers.length) return null;
+  const verb = intent === "entrar" ? "Entrar" : "Criar conta";
+  const box = "flex h-12 items-center justify-center gap-3 rounded-2xl bg-white text-black shadow-[0_2px_12px_rgb(0_0_0/.05)] ring-1 ring-black/5 transition-colors hover:bg-black hover:text-white";
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 text-[11px] uppercase tracking-[.18em] text-muted-foreground">
-        <span className="h-px flex-1 bg-black/10" />ou {intent === "entrar" ? "entre" : "crie"} com<span className="h-px flex-1 bg-black/10" />
+        <span className="h-px flex-1 bg-black/10" />ou<span className="h-px flex-1 bg-black/10" />
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        {(Object.keys(icons) as SocialProvider[]).map((provider) => (
-          <a
-            key={provider}
-            href={`/api/auth/${provider}`}
-            aria-label={`${intent === "entrar" ? "Entrar" : "Criar conta"} com ${socialProviderLabels[provider]}`}
-            className="flex h-12 items-center justify-center rounded-2xl bg-white text-black shadow-[0_2px_12px_rgb(0_0_0/.05)] ring-1 ring-black/5 transition-colors hover:bg-black hover:text-white"
-          >
-            {icons[provider]}
-          </a>
-        ))}
-      </div>
+      {providers.length === 1 ? (
+        <a href={`/api/auth/${providers[0]}`} className={`${box} text-sm font-medium`}>
+          {icons[providers[0]]} {verb} com {socialProviderLabels[providers[0]]}
+        </a>
+      ) : (
+        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))` }}>
+          {providers.map((provider) => (
+            <a key={provider} href={`/api/auth/${provider}`} aria-label={`${verb} com ${socialProviderLabels[provider]}`} className={box}>
+              {icons[provider]}
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
