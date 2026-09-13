@@ -30,12 +30,11 @@ export const getSession = cache(async (): Promise<AppSession | null> => {
       profile = await db.user.update({ where: { id: byEmail.id }, data: { authUserId: authUser.id }, select: { id: true, email: true, firstName: true, lastName: true, memberships: membershipSelect } });
     }
   }
-  let identity = identityFromMemberships(profile);
-  if (!identity && (await acceptPendingInvitations(authUser))) {
+  // Convites pendentes valem também para quem já tem outra barbearia (uma consulta indexada por e-mail).
+  if (await acceptPendingInvitations(authUser)) {
     profile = await db.user.findUnique({ where: { authUserId: authUser.id }, select: { id: true, email: true, firstName: true, lastName: true, memberships: membershipSelect } });
-    identity = identityFromMemberships(profile);
   }
-  return identity;
+  return identityFromMemberships(profile);
 });
 
 /** O usuário do Supabase, mesmo sem perfil no app ainda (cadastro por Google a completar). */

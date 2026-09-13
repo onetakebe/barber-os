@@ -25,6 +25,11 @@ export async function createInvitation(input: CreateInvitationInput): Promise<Cr
 
   const alreadyMember = await db.membership.findFirst({ where: { tenantId: input.tenantId, user: { email } }, select: { id: true, isActive: true } });
   if (alreadyMember?.isActive) return { kind: "error", message: "Essa pessoa já faz parte da equipe." };
+  // O profissional vinculado tem de ser desta barbearia e ainda sem login — nunca confiar no id vindo do formulário.
+  if (input.staffId) {
+    const staff = await db.staff.findFirst({ where: { id: input.staffId, tenantId: input.tenantId, deletedAt: null, userId: null }, select: { id: true } });
+    if (!staff) return { kind: "error", message: "Profissional inválido para esta barbearia." };
+  }
 
   const invitation = await db.invitation.upsert({
     where: { tenantId_email: { tenantId: input.tenantId, email } },
