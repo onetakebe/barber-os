@@ -208,6 +208,61 @@
   place-items: center;
 }
 
+/* Cards de escolha do wizard (13/09). Três níveis, todos opacos: o comum é uma
+   superfície elevada com luz de topo; o destaque (combo) e o selecionado quebram o
+   padrão com degradê. Nessa tela não há hero, então o selecionado É o hero em degradê. */
+.choice-card {
+  background: var(--surface-raised);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.choice-card:hover {
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.choice-card--featured {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--brand) 18%, var(--surface-raised)) 0%, var(--surface-raised) 55%, var(--surface-panel) 100%);
+  border-color: color-mix(in srgb, var(--brand) 28%, transparent);
+}
+
+.choice-card[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%), 0 22px 56px -30px rgb(255 140 66 / 60%);
+  color: var(--brand-ink);
+}
+
+.choice-card[aria-pressed="true"] .icon-tile {
+  background: rgb(26 13 6 / 14%);
+  border-color: rgb(26 13 6 / 18%);
+  color: var(--brand-ink);
+}
+
+/* Texto secundário e chips trocam de tom junto com o card. */
+.choice-muted {
+  color: var(--muted-foreground);
+}
+
+.choice-chip {
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 999px;
+  color: var(--foreground);
+}
+
+.choice-card[aria-pressed="true"] .choice-muted {
+  color: rgb(26 13 6 / 74%);
+}
+
+.choice-card[aria-pressed="true"] .choice-chip {
+  background: rgb(26 13 6 / 12%);
+  border-color: rgb(26 13 6 / 16%);
+  color: var(--brand-ink);
+}
+
 .dashboard-card {
   border: 1px solid rgb(255 255 255 / 9%);
   border-radius: 18px;

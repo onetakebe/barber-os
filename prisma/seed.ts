@@ -109,11 +109,15 @@ async function seed() {
 
   const category = await prisma.serviceCategory.upsert({ where: { tenantId_name: { tenantId, name: "Serviços" } }, update: {}, create: { tenantId, name: "Serviços" } });
   const serviceSeeds = [
-    ["Corte Signature", 3200, 45, false], ["Barba Premium", 2400, 30, false], ["Ritual Club", 5200, 75, true], ["Corte Máquina", 2200, 30, false], ["Sobrancelha", 1200, 15, false],
+    ["Corte Signature", 3200, 45, false, "Corte sob medida, com lavagem e finalização com produto."],
+    ["Barba Premium", 2400, 30, false, "Toalha quente, navalha e óleo de barba no acabamento."],
+    ["Ritual Club", 5200, 75, true, "Corte Signature e Barba Premium na mesma cadeira, com pausa para um café."],
+    ["Corte Máquina", 2200, 30, false, "Corte rápido na máquina, com acabamento na nuca e nas laterais."],
+    ["Sobrancelha", 1200, 15, false, "Alinhamento na navalha, sem mudar o desenho natural."],
   ] as const;
   const services = [];
-  for (const [name, priceCents, durationMinutes, isCombo] of serviceSeeds) {
-    const service = await prisma.service.upsert({ where: { tenantId_name: { tenantId, name } }, update: {}, create: { tenantId, categoryId: category.id, name, priceCents, durationMinutes, isCombo } });
+  for (const [name, priceCents, durationMinutes, isCombo, description] of serviceSeeds) {
+    const service = await prisma.service.upsert({ where: { tenantId_name: { tenantId, name } }, update: { description }, create: { tenantId, categoryId: category.id, name, description, priceCents, durationMinutes, isCombo } });
     services.push(service);
     for (const member of staff) await prisma.staffService.upsert({ where: { tenantId_staffId_serviceId: { tenantId, staffId: member.id, serviceId: service.id } }, update: {}, create: { tenantId, staffId: member.id, serviceId: service.id } });
   }

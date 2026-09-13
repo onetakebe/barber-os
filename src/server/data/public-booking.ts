@@ -51,7 +51,7 @@ export async function getPublicBookingCatalog(slug: string) {
       services: {
         where: { isActive: true, deletedAt: null },
         orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
-        select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true, depositRequired: true },
+        select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true, depositRequired: true, isCombo: true },
       },
       staff: {
         where: { isBookable: true, deletedAt: null },

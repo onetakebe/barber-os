@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CalendarCheck, Check, ShieldCheck, Star, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Check, Clock, Crown, Eye, ShieldCheck, Sparkles, Scissors, Star, UserRound, Users, Zap, type LucideIcon } from "lucide-react";
 
 import { createPublicBookingAction, type BookingActionState } from "@/app/(public)/barbearia/[slug]/agendar/actions";
 import { MonthCalendar, type CalendarDay } from "@/components/booking/month-calendar";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 type BookingCatalog = {
   business: { name: string; slug: string; timezone: string; defaultDepositCents: number; cancellationNoticeHours: number };
-  services: { id: string; name: string; description: string | null; priceCents: number; durationMinutes: number; depositRequired: boolean }[];
+  services: { id: string; name: string; description: string | null; priceCents: number; durationMinutes: number; depositRequired: boolean; isCombo: boolean }[];
   staff: { id: string; displayName: string; title: string | null; imageUrl: string | null; rating: number | null; reviewCount: number; serviceIds: string[] }[];
   /** Janela da reserva no fuso da barbearia: hoje e o último dia marcável. */
   window: { today: string; last: string };
@@ -36,6 +36,16 @@ const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currenc
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("");
+}
+
+/** Ícone decorativo por tipo de serviço — só pelo nome, não há categoria no catálogo público. */
+function serviceIcon(service: { name: string; isCombo: boolean }): LucideIcon {
+  const name = service.name.toLowerCase();
+  if (service.isCombo) return Crown;
+  if (name.includes("sobrancelha")) return Eye;
+  if (name.includes("máquina") || name.includes("maquina")) return Zap;
+  if (name.includes("barba")) return Sparkles;
+  return Scissors;
 }
 
 export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
@@ -58,6 +68,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [isLoadingMonth, startLoadingMonth] = useTransition();
   const [state, action, pending] = useActionState(createPublicBookingAction, initialState);
   const service = useMemo(() => catalog.services.find((item) => item.id === serviceId) ?? catalog.services[0], [catalog.services, serviceId]);
+  // Combos primeiro e em largura total: é o card "mais completo" da grade.
+  const orderedServices = useMemo(() => [...catalog.services].sort((a, b) => Number(b.isCombo) - Number(a.isCombo)), [catalog.services]);
   const eligibleStaff = useMemo(() => catalog.staff.filter((member) => member.serviceIds.includes(serviceId)), [catalog.staff, serviceId]);
   const selectedStaff = eligibleStaff.find((item) => item.id === staffId);
   const selectedSlot = slots.find((item) => item.time === time);
@@ -165,11 +177,52 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
             <div className="flex flex-col gap-7">
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Serviço</p>
-                <div className="grid gap-3">{catalog.services.map((item) => <button type="button" key={item.id} onClick={() => { setServiceId(item.id); setStaffId("any"); }} aria-pressed={serviceId === item.id} className={cn("flex items-center justify-between rounded-2xl border p-4 text-left transition-colors", serviceId === item.id ? "border-brand/60 bg-brand/10" : "border-white/8 hover:bg-white/[.025]")}><div><p className="font-medium">{item.name}</p><p className="mt-1 text-xs text-muted-foreground">{item.description ?? "Serviço profissional"}</p><p className="mt-2 font-mono text-[11px] text-muted-foreground">{item.durationMinutes} min</p></div><span className="font-heading text-lg font-semibold">{euro(item.priceCents)}</span></button>)}</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {orderedServices.map((item) => {
+                    const Icon = serviceIcon(item);
+                    const professionals = catalog.staff.filter((member) => member.serviceIds.includes(item.id)).length;
+                    return (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => { setServiceId(item.id); setStaffId("any"); }}
+                        aria-pressed={serviceId === item.id}
+                        className={cn("choice-card flex flex-col p-5 text-left", item.isCombo && "choice-card--featured sm:col-span-2")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="icon-tile size-11"><Icon className="size-5" aria-hidden="true" /></span>
+                          <span className="font-heading text-xl font-semibold tracking-tight">{euro(item.priceCents)}</span>
+                        </div>
+                        <p className="font-heading mt-5 text-lg font-semibold leading-tight">{item.name}</p>
+                        {item.description ? <p className={cn("choice-muted mt-1.5 text-sm leading-5", item.isCombo && "sm:max-w-md")}>{item.description}</p> : null}
+                        <div className="mt-auto flex flex-wrap gap-2 pt-5 font-mono text-[11px]">
+                          <span className="choice-chip inline-flex items-center gap-1.5 px-2.5 py-1"><Clock className="size-3" aria-hidden="true" />{item.durationMinutes} min</span>
+                          <span className="choice-chip inline-flex items-center gap-1.5 px-2.5 py-1"><Users className="size-3" aria-hidden="true" />{professionals} {professionals === 1 ? "profissional" : "profissionais"}</span>
+                          {item.isCombo ? <span className="choice-chip inline-flex items-center gap-1.5 px-2.5 py-1">Combo</span> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Profissional</p>
-                <div className="grid gap-3 sm:grid-cols-2"><button type="button" onClick={() => setStaffId("any")} aria-pressed={staffId === "any"} className={cn("flex items-start gap-4 rounded-2xl border p-4 text-left", staffId === "any" ? "border-brand/60 bg-brand/10" : "border-white/8")}><span className="grid size-12 shrink-0 place-items-center rounded-full bg-white/10 text-white"><UserRound className="size-5" /></span><span className="min-w-0"><span className="block font-medium">Qualquer profissional</span><span className="mt-1 block text-xs text-muted-foreground">O primeiro disponível para este horário.</span></span></button>{eligibleStaff.map((member) => <button type="button" key={member.id} onClick={() => setStaffId(member.id)} aria-pressed={staffId === member.id} className={cn("flex items-start gap-4 rounded-2xl border p-4 text-left", staffId === member.id ? "border-brand/60 bg-brand/10" : "border-white/8")}><StaffAvatar imageUrl={member.imageUrl} initials={initials(member.displayName)} className="size-12" /><span className="min-w-0"><span className="block font-medium">{member.displayName}</span><span className="mt-1 block text-xs text-muted-foreground">{member.title ?? "Profissional"}</span>{member.rating ? <span className="mt-2 flex items-center gap-1 font-mono text-[11px]"><Star className="size-3 fill-current" aria-hidden="true" />{member.rating.toFixed(1)}<span className="text-muted-foreground">· {member.reviewCount}</span></span> : <span className="mt-2 block font-mono text-[11px] text-muted-foreground">Sem avaliações</span>}</span></button>)}</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button type="button" onClick={() => setStaffId("any")} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
+                    <span className="icon-tile size-12 shrink-0"><UserRound className="size-5" aria-hidden="true" /></span>
+                    <span className="min-w-0"><span className="block font-medium">Qualquer profissional</span><span className="choice-muted mt-1 block text-xs leading-5">O primeiro disponível para este horário.</span></span>
+                  </button>
+                  {eligibleStaff.map((member) => (
+                    <button type="button" key={member.id} onClick={() => setStaffId(member.id)} aria-pressed={staffId === member.id} className="choice-card flex items-start gap-4 p-4 text-left">
+                      <StaffAvatar imageUrl={member.imageUrl} initials={initials(member.displayName)} className="size-12" />
+                      <span className="min-w-0">
+                        <span className="block font-medium">{member.displayName}</span>
+                        <span className="choice-muted mt-1 block text-xs">{member.title ?? "Profissional"}</span>
+                        {member.rating ? <span className="mt-2 flex items-center gap-1 font-mono text-[11px]"><Star className="size-3 fill-current" aria-hidden="true" />{member.rating.toFixed(1)}<span className="choice-muted">· {member.reviewCount}</span></span> : <span className="choice-muted mt-2 block font-mono text-[11px]">Sem avaliações</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
