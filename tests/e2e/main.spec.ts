@@ -33,7 +33,7 @@ test("owner signs in and sees the live dashboard", async ({ page }) => {
   await expect(page.getByText("Dados do tenant em tempo real")).toBeVisible();
 });
 
-test("customer completes a persisted booking and simulated deposit flow", async ({ page }) => {
+test("customer completes a persisted booking without an online deposit", async ({ page }) => {
   await page.goto("/barbearia/as-barber-club/agendar");
   await page.getByRole("button", { name: /Continuar/ }).click();
   await page.getByRole("button", { name: /Continuar/ }).click();
@@ -45,9 +45,10 @@ test("customer completes a persisted booking and simulated deposit flow", async 
   await page.getByLabel("E-mail").fill("playwright@example.com");
   await page.getByLabel("Telefone").fill("+32 470 99 88 77");
   await page.getByRole("button", { name: /Continuar/ }).click();
-  await page.getByRole("button", { name: /Pagar/ }).click();
+  await page.getByRole("button", { name: /Confirmar reserva/ }).click();
   await expect(page.getByRole("heading", { name: "Sua cadeira está reservada." })).toBeVisible();
-  await expect(page.getByText("Sinal simulado pago")).toBeVisible();
+  await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
+  await expect(page.getByText("Nada foi cobrado agora", { exact: false })).toBeVisible();
 });
 
 test("owner creates a customer and the record survives reload", async ({ page }) => {

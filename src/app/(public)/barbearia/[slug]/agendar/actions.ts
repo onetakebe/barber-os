@@ -15,7 +15,6 @@ export type BookingActionState = {
     staffName: string;
     startsAt: string;
     totalCents: number;
-    depositCents: number;
     cancellationNoticeHours: number;
   };
 };
@@ -38,10 +37,9 @@ export async function createPublicBookingAction(_state: BookingActionState, form
   if (!parsed.success) return { status: "error", errors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
   try {
     const booking = await createPublicBooking(parsed.data);
-    return { status: "success", message: "Reserva confirmada e sinal simulado pago.", booking: { ...booking, startsAt: booking.startsAt.toISOString() } };
+    return { status: "success", message: "Reserva confirmada.", booking: { ...booking, startsAt: booking.startsAt.toISOString() } };
   } catch (error) {
     if (error instanceof BookingError && error.code === "SLOT_CONFLICT") return { status: "error", message: "Este horário acabou de ser ocupado. Escolha outro horário." };
-    if (error instanceof BookingError && error.code === "PAYMENT_FAILED") return { status: "error", message: "O pagamento simulado falhou e nenhum agendamento foi criado." };
     if (error instanceof BookingError && error.code === "RESOURCE_NOT_FOUND") return { status: "error", message: "Serviço ou barbearia não está mais disponível." };
     console.error("PUBLIC_BOOKING_FAILED", error);
     return { status: "error", message: "Não foi possível confirmar a reserva. Tente novamente." };
