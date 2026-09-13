@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Camera,
   Clock3,
+  LogIn,
   MapPin,
   Scissors,
   Star,
@@ -55,12 +56,17 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
               </a>
             ))}
           </nav>
-          <Link
-            href={bookingHref}
-            className="group inline-flex h-10 items-center gap-2 rounded-full bg-white px-5 text-[11px] font-semibold uppercase tracking-[.14em] text-black transition-colors hover:bg-surface-invert-muted"
-          >
-            Agendar <ArrowUpRight className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-          </Link>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <Link href="/login" className="inline-flex h-10 items-center gap-2 px-2 text-[11px] uppercase tracking-[.16em] text-white/65 transition-colors hover:text-white">
+              <LogIn className="size-3.5" aria-hidden="true" /> Entrar
+            </Link>
+            <Link
+              href={bookingHref}
+              className="group inline-flex h-10 items-center gap-2 rounded-full bg-white px-5 text-[11px] font-semibold uppercase tracking-[.14em] text-black transition-colors hover:bg-surface-invert-muted"
+            >
+              Agendar <ArrowUpRight className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+            </Link>
+          </div>
         </div>
       </header>
 
