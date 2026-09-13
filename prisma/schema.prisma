@@ -102,6 +102,8 @@ enum SubscriptionStatus {
 model User {
   id            String       @id @default(cuid())
   email         String       @unique
+  // Id em auth.users do Supabase (etapa 2). Null só para contas ainda não migradas.
+  authUserId    String?      @unique
   passwordHash  String?
   firstName     String
   lastName      String
@@ -112,7 +114,6 @@ model User {
   updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
   deletedAt     DateTime?    @db.Timestamptz(3)
   accounts      Account[]
-  sessions      Session[]
   memberships   Membership[]
   staffProfiles Staff[]
   auditLogs     AuditLog[]
@@ -137,19 +138,6 @@ model Account {
   @@index([userId])
 }
 
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  tenantId     String
-  expires      DateTime @db.Timestamptz(3)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expires])
-  @@index([tenantId, expires])
-}
-
 model Tenant {
   id                       String                     @id @default(cuid())
   name                     String
@@ -172,7 +160,6 @@ model Tenant {
   deletedAt                DateTime?                  @db.Timestamptz(3)
   units                    BusinessUnit[]
   memberships              Membership[]
-  sessions                 Session[]
   customers                Customer[]
   staff                    Staff[]
   categories               ServiceCategory[]

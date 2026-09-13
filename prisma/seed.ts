@@ -55,7 +55,6 @@ async function seed() {
     await tx.staff.deleteMany({ where });
     await tx.customer.deleteMany({ where });
     await tx.businessUnit.deleteMany({ where });
-    await tx.session.deleteMany({ where });
     await tx.membership.deleteMany({ where });
     await tx.tenant.deleteMany({ where: { id: tenantId } });
   });

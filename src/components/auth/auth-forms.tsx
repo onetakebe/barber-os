@@ -59,7 +59,7 @@ export function SignupForm({ social = null }: { social?: SocialPrefill | null })
   return (
     <form action={action} className="flex flex-col gap-3.5">
       {social ? <input type="hidden" name="social" value="1" /> : null}
-      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      {state.message ? <Alert variant={state.status === "success" ? "default" : "destructive"}><AlertDescription>{state.message}</AlertDescription></Alert> : null}
       <div className="grid gap-3.5 sm:grid-cols-2">
         <FieldBox id="firstName" label="Nome" error={state.errors?.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" defaultValue={social?.firstName} required className={boxInput} /></FieldBox>
         <FieldBox id="lastName" label="Sobrenome" error={state.errors?.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" defaultValue={social?.lastName} required className={boxInput} /></FieldBox>

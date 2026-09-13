@@ -4,23 +4,16 @@ import { LoginForm } from "@/components/auth/auth-forms";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { isSocialProvider, socialProviderLabels } from "@/server/auth/social";
 
-const socialErrors: Record<string, string> = {
-  cancelado: "Você cancelou o acesso no provedor.",
+const errors: Record<string, string> = {
   estado: "A sessão de login expirou. Tente de novo.",
-  provedor: "Não foi possível concluir o login com o provedor.",
+  provedor: "Não foi possível concluir o login com o Google.",
   "sem-estabelecimento": "Sua conta existe, mas não está ligada a nenhuma barbearia ativa.",
 };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string; provedor?: string }> }) {
-  const { erro, provedor } = await searchParams;
-  const message =
-    erro === "nao-configurado" && provedor && isSocialProvider(provedor)
-      ? `Entrar com ${socialProviderLabels[provedor]} ainda não está configurado neste ambiente.`
-      : erro
-        ? socialErrors[erro]
-        : null;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
+  const { erro } = await searchParams;
+  const message = erro ? errors[erro] : null;
 
   return (
     <AuthShell title="Entrar">
