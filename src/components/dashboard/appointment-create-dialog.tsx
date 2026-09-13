@@ -55,7 +55,7 @@ export function AppointmentCreateDialog({
     startLoadingSlots(async () => {
       setSlotError(undefined);
       try {
-        const query = new URLSearchParams({ date, serviceId, staffId });
+        const query = new URLSearchParams({ date, serviceId, staffId, includeStarted: "1" });
         const response = await fetch(`/api/public/${tenantSlug}/availability?${query}`);
         if (!response.ok) throw new Error("AVAILABILITY_FAILED");
         const payload = (await response.json()) as { slots: Slot[] };

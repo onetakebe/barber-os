@@ -21,7 +21,11 @@ type SlotInput = {
   durationMinutes: number;
   intervalMinutes: number;
   staff: StaffAvailabilityRecord[];
+  /** Horários que já começaram antes deste instante saem (só afeta o dia de hoje). */
+  now?: Date;
 };
+
+export type BookableDay = { date: string; available: boolean };
 
 export type AvailableSlot = {
   time: string;
@@ -85,6 +89,7 @@ export function getAvailableSlotsFromRecords(input: SlotInput): AvailableSlot[] 
         const time = minuteToTime(minute);
         const endTime = minuteToTime(endMinute);
         const startsAt = localDateTimeToUtc(input.date, time, input.timezone);
+        if (input.now !== undefined && startsAt <= input.now) continue;
         const endsAt = localDateTimeToUtc(input.date, endTime, input.timezone);
         const hitsBreak = schedule.breakStartMinute !== null && schedule.breakEndMinute !== null && minute < schedule.breakEndMinute && endMinute > schedule.breakStartMinute;
         const occupied = [...member.timeOff, ...member.appointments].some((range) => overlaps(startsAt, endsAt, range));
@@ -96,4 +101,34 @@ export function getAvailableSlotsFromRecords(input: SlotInput): AvailableSlot[] 
   }
 
   return [...slots.entries()].sort(([a], [b]) => a - b).map(([, slot]) => slot);
+}
+
+/** Data local (YYYY-MM-DD) de um instante no fuso do tenant. */
+export function localDateInZone(value: Date, timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+}
+
+/** Soma dias a uma data YYYY-MM-DD sem passar por fuso local. */
+export function addDays(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function daysOfMonth(month: string) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const count = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+  return Array.from({ length: count }, (_, index) => `${month}-${String(index + 1).padStart(2, "0")}`);
+}
+
+/** Quais dias de um mês ainda têm horário: fora da janela [hoje, hoje + horizonte], sem
+ *  jornada ou tomado por bloqueio/agendamentos = indisponível. Mesma regra dos horários, dia a dia. */
+export function getBookableDaysFromRecords(input: Omit<SlotInput, "date" | "now"> & { month: string; now: Date; horizonDays: number }): BookableDay[] {
+  const today = localDateInZone(input.now, input.timezone);
+  const last = addDays(today, input.horizonDays);
+  return daysOfMonth(input.month).map((date) => {
+    if (date < today || date > last) return { date, available: false };
+    const slots = getAvailableSlotsFromRecords({ ...input, date, now: input.now });
+    return { date, available: slots.some((slot) => slot.staffIds.length > 0) };
+  });
 }

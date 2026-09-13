@@ -57,38 +57,51 @@ E2E atualizado, não executado nesta sessão.
 ## T2 — Calendário de mês real
 
 **Servidor**
-- [ ] Testes em `tests/server/availability-service.test.ts`:
+- [x] Testes em `tests/server/availability-service.test.ts`:
       (a) `getAvailableSlotsFromRecords` com `now` corta horários que já passaram no dia de
       hoje (fuso do tenant) e não corta nada em dias futuros;
       (b) nova função pura `getBookableDaysFromRecords({ month, timezone, now, horizonDays,
       durationMinutes, staff })` devolve, por dia do mês, `{ date, available: boolean }` —
       passado e além de 60 dias = indisponível; dia sem jornada = indisponível; dia com jornada
       mas tomado por bloqueio/agendamentos = indisponível.
-- [ ] `src/server/services/availability.ts`: parâmetro opcional `now` em
+- [x] `src/server/services/availability.ts`: parâmetro opcional `now` em
       `getAvailableSlotsFromRecords`; `getBookableDaysFromRecords` reaproveitando a mesma
       regra dia a dia (uma consulta de registros para o mês inteiro, não uma por dia).
-- [ ] `src/server/data/public-booking.ts`: `getAvailabilityForTenant` passa `now`;
+- [x] `src/server/data/public-booking.ts`: `getAvailabilityForTenant` passa `now`;
       nova `getBookableDaysForTenant({ tenantId, timezone, month, serviceId, staffId })` que
       carrega jornada, bloqueios e agendamentos do intervalo do mês numa consulta e chama a
       função pura. `getBookableDates` (os 7 chips) sai.
-- [ ] Rota `src/app/api/public/[slug]/availability/month/route.ts`
+- [x] Rota `src/app/api/public/[slug]/availability/month/route.ts`
       (`?month=YYYY-MM&serviceId&staffId`), mesmo padrão Zod + 404 da rota de dia.
 
 **Tela**
-- [ ] `src/components/booking/month-calendar.tsx` (client, sem dependência nova): grade
+- [x] `src/components/booking/month-calendar.tsx` (client, sem dependência nova): grade
       seg–dom em pt-BR, mês atual e navegação até `hoje + 60 dias`, dia desabilitado quando
       `available: false` ou fora da janela, dia selecionado em brand (`#FF8C42`) como as demais
       seleções do wizard, acessível por teclado (botões, `aria-pressed`, `aria-disabled`).
-- [ ] Wizard: ao entrar no passo de horário, busca o mês corrente; ao trocar de mês, busca de
+- [x] Wizard: ao entrar no passo de horário, busca o mês corrente; ao trocar de mês, busca de
       novo; ao clicar num dia, busca os horários daquele dia (rota existente). Primeiro dia
       disponível vem pré-selecionado. Estado de carregamento e erro honestos ("Não foi possível
       carregar o mês").
-- [ ] `src/app/(public)/barbearia/[slug]/page.tsx`: "próximo horário" do hero passa a usar o
+- [x] `src/app/(public)/barbearia/[slug]/page.tsx`: "próximo horário" do hero passa a usar o
       primeiro dia disponível (hoje incluído) em vez de `getBookableDates(...)[0]`.
 
 **Pronto quando:** no navegador (desktop e 375px) o mês mostra dias cinza onde não há jornada
 ou está lotado, hoje aparece só se ainda houver horário, dá para ir até 2 meses à frente e
 escolher um dia + hora; vitest cobre corte por "agora" e dias do mês.
+
+**Feito em 13/09:** `getAvailableSlotsFromRecords` ganhou `now` (horário já iniciado nem é
+listado); `getBookableDaysFromRecords` + `getBookableDaysForTenant` (uma consulta por mês, via
+`loadStaffRecords` compartilhado); rota `/availability/month`; `month-calendar.tsx`;
+`getNextPublicSlot` para o hero ("Próximo horário: amanhã às 09:00"). Desvios do plano:
+(1) `getBookableDates` **ficou** — a agenda do painel usa os chips de 7 dias; só saiu do fluxo
+público. (2) O corte por "agora" é **só público**: o diálogo do painel chama a rota com
+`includeStarted=1` e continua podendo registrar atendimento de hoje que já começou; a reserva
+pública recalcula com o corte no servidor, então o flag não abre brecha. Verificado: tsc,
+vitest 51/51, navegador desktop e 375px (setembro com domingos e passado desabilitados,
+novembro cortado no dia 12 = hoje+60, botão de próximo mês desabilita no limite), rota 400/404.
+eslint: 2 erros pré-existentes em `appointment-create-dialog.tsx` (`set-state-in-effect`), não
+introduzidos aqui.
 
 ## T3 — Wizard em 3 passos
 

@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 
 import { StaffPhoto } from "@/components/staff-photo";
-import { getBookableDates, getPublicAvailability, getPublicBookingCatalog } from "@/server/data/public-booking";
+import { getBookingWindow, getNextPublicSlot, getPublicBookingCatalog } from "@/server/data/public-booking";
+import { addDays } from "@/server/services/availability";
 
 const navItems = [
   { href: "#servicos", label: "Serviços" },
@@ -37,9 +38,11 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
   const business = await getPublicBookingCatalog(slug);
   if (!business) notFound();
   const bookingHref = `/barbearia/${slug}/agendar`;
-  const firstDate = getBookableDates(business.timezone)[0]?.value;
-  const nextAvailability = business.services[0] && firstDate ? await getPublicAvailability({ slug, date: firstDate, serviceId: business.services[0].id, staffId: "any" }) : null;
-  const nextSlot = nextAvailability?.slots[0]?.time;
+  const nextAvailable = business.services[0] ? await getNextPublicSlot({ tenantId: business.id, timezone: business.timezone, serviceId: business.services[0].id }) : null;
+  const window = getBookingWindow(business.timezone);
+  const nextSlot = nextAvailable
+    ? `${nextAvailable.date === window.today ? "hoje" : nextAvailable.date === addDays(window.today, 1) ? "amanhã" : new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${nextAvailable.date}T12:00:00.000Z`)).replace(".", "")} às ${nextAvailable.time}`
+    : null;
   const rating = business.reviews.length ? business.reviews.reduce((sum, review) => sum + review.rating, 0) / business.reviews.length : null;
 
   return (
@@ -96,7 +99,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
         </div>
         <div className="grid gap-5 border-b border-white/12 px-1 py-6 sm:grid-cols-3 sm:gap-8">
           <div className="flex items-center gap-3"><Star className="size-4" /><div><p className="text-sm">{rating ? `${rating.toFixed(1)} / 5` : "Novas avaliações"}</p><p className="mt-1 text-xs text-white/65">{business.reviews.length} avaliações públicas</p></div></div>
-          <div className="flex items-center gap-3"><Clock3 className="size-4" /><div><p className="text-sm">{nextSlot ? `Próximo horário ${nextSlot}` : "Consulte a agenda"}</p><p className="mt-1 text-xs text-white/65">Escolha o melhor momento para você</p></div></div>
+          <div className="flex items-center gap-3"><Clock3 className="size-4" /><div><p className="text-sm">{nextSlot ? `Próximo horário: ${nextSlot}` : "Consulte a agenda"}</p><p className="mt-1 text-xs text-white/65">Escolha o melhor momento para você</p></div></div>
           <div className="flex items-center gap-3"><MapPin className="size-4" /><div><p className="text-sm">{business.city ?? "Localização"}</p><p className="mt-1 text-xs text-white/65">{business.address ?? "Endereço a configurar"}</p></div></div>
         </div>
       </section>
