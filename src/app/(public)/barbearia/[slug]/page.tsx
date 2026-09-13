@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -19,8 +22,15 @@ const navItems = [
   { href: "#servicos", label: "Serviços" },
   { href: "#trabalhos", label: "Trabalhos" },
   { href: "#equipe", label: "Equipe" },
+  { href: "#produtos", label: "Produtos" },
   { href: "#contato", label: "Contato" },
 ];
+
+// O seed aponta para imagens que ainda não existem em public/; sem arquivo, o card
+// mostra a inicial do produto em vez de um 404 (estado honesto, não imagem quebrada).
+function publicImageExists(url: string | null) {
+  return Boolean(url && url.startsWith("/") && existsSync(path.join(process.cwd(), "public", url)));
+}
 
 export default async function BusinessPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -235,11 +245,49 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
         </div>
       </section>
 
+      <section id="produtos" className="surface-ambient scroll-mt-20 border-t border-white/10 bg-surface-base">
+        <div className="mx-auto max-w-[1500px] px-5 py-20 lg:px-10 lg:py-28">
+          <div className="mb-10 grid gap-6 lg:grid-cols-2">
+            <div><p className="mb-4 text-[10px] uppercase tracking-[.22em] text-white/65">06 / Produtos</p><h2 className="font-display text-5xl uppercase leading-[.85] tracking-[-.055em] sm:text-7xl">Leve o cuidado<br />para casa.</h2></div>
+            <p className="max-w-md self-end text-sm leading-6 text-white/65 lg:justify-self-end">O que usamos na cadeira, à venda na barbearia. Reserve o seu na hora do atendimento.</p>
+          </div>
+          {business.products.length ? (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {business.products.map((product) => {
+                const soldOut = product.stock <= 0;
+                const lastUnits = !soldOut && product.stock <= product.minimumStock;
+                return (
+                  <article key={product.id} className="group flex flex-col overflow-hidden rounded-xl border border-white/12 bg-surface-raised">
+                    <div className="image-grain relative aspect-square overflow-hidden bg-surface-panel">
+                      {publicImageExists(product.imageUrl) ? (
+                        <Image src={product.imageUrl!} alt={product.name} fill sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" className="object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                      ) : (
+                        <div className="grid h-full place-items-center font-display text-7xl text-white/15" aria-hidden="true">{product.name.slice(0, 1)}</div>
+                      )}
+                      {soldOut ? <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1 text-[10px] uppercase tracking-[.16em] text-white/80">Esgotado</span> : null}
+                      {lastUnits ? <span className="absolute left-3 top-3 rounded-full bg-brand px-3 py-1 text-[10px] font-semibold uppercase tracking-[.16em] text-brand-ink">Últimas unidades</span> : null}
+                    </div>
+                    <div className="flex flex-1 flex-col gap-2 p-5">
+                      <p className="text-[10px] uppercase tracking-[.18em] text-white/55">{product.brand ?? product.category}</p>
+                      <h3 className="font-heading text-lg font-semibold tracking-tight">{product.name}</h3>
+                      {product.description ? <p className="text-xs leading-5 text-white/65">{product.description}</p> : null}
+                      <p className="mt-auto pt-3 font-mono text-base">€ {(product.priceCents / 100).toFixed(2)}</p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="border-t border-white/15 pt-8 text-sm text-white/65">Ainda não há produtos à venda. Pergunte na barbearia pelo que usamos no seu atendimento.</p>
+          )}
+        </div>
+      </section>
+
       <section id="contato" className="surface-ambient scroll-mt-20 bg-surface-base">
         <div className="mx-auto max-w-[1500px] px-5 py-20 lg:px-10 lg:py-28">
           <div className="grid gap-12 border-t border-white/15 pt-10 lg:grid-cols-2">
             <div>
-              <p className="mb-5 text-[10px] uppercase tracking-[.22em] text-white/65">06 / Contato</p>
+              <p className="mb-5 text-[10px] uppercase tracking-[.22em] text-white/65">07 / Contato</p>
               <h2 className="font-display text-6xl uppercase leading-[.82] tracking-[-.06em] sm:text-8xl lg:text-9xl">A cadeira<br />está pronta.</h2>
               <Link href={bookingHref} className="group mt-10 inline-flex h-14 items-center gap-4 rounded-full bg-white px-7 text-xs font-semibold uppercase tracking-[.16em] text-black hover:bg-surface-invert-muted">Escolher horário <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" /></Link>
             </div>

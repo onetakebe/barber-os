@@ -49,6 +49,13 @@ export async function getPublicBookingCatalog(slug: string) {
         take: 6,
         select: { id: true, rating: true, comment: true, customer: { select: { firstName: true, lastName: true } } },
       },
+      // Vitrine: só produtos ativos de varejo; estoque entra para sinalizar "últimas unidades".
+      products: {
+        where: { isActive: true, deletedAt: null },
+        orderBy: [{ category: "asc" }, { name: "asc" }],
+        take: 8,
+        select: { id: true, name: true, description: true, brand: true, category: true, priceCents: true, stock: true, minimumStock: true, imageUrl: true },
+      },
     },
   });
   if (!tenant) return null;
