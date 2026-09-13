@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 const errors: Record<string, string> = {
   estado: "A sessão de login expirou. Tente de novo.",
   provedor: "Não foi possível concluir o login com o Google.",
+  link: "O link do e-mail expirou ou já foi usado. Peça um novo.",
   "sem-estabelecimento": "Sua conta existe, mas não está ligada a nenhuma barbearia ativa.",
 };
 
