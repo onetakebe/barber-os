@@ -8,6 +8,8 @@ import { parseAvailabilityWindow } from "@/domain/scheduling/availability-rules"
 import { AuthorizationError, authorizeAction } from "@/server/auth/authorization";
 import { db } from "@/server/db";
 import { localDateTimeToUtc } from "@/server/services/availability";
+import { BookingError } from "@/server/services/booking";
+import { createInternalBooking } from "@/server/services/internal-booking";
 
 export type AgendaActionState = { status: "idle" | "success" | "error"; message?: string };
 const schema = z.object({ appointmentId: z.string().min(1), reason: z.string().trim().max(300).optional() });
@@ -45,6 +47,47 @@ export async function cancelAppointmentAction(_state: AgendaActionState, formDat
     if (error instanceof Error && error.message === "APPOINTMENT_ALREADY_CANCELLED") return { status: "error", message: "Este agendamento já foi cancelado." };
     console.error("CANCEL_APPOINTMENT_FAILED", error);
     return { status: "error", message: "Não foi possível cancelar o agendamento." };
+  }
+}
+
+const createSchema = z.object({
+  serviceId: z.string().min(1, "Escolha o serviço."),
+  staffId: z.string().min(1, "Escolha o profissional."),
+  date: z.iso.date(),
+  time: z.string().regex(/^\d{2}:\d{2}$/, "Escolha o horário."),
+  firstName: z.string().trim().min(2, "Informe o nome do cliente."),
+  lastName: z.string().trim().min(1, "Informe o sobrenome."),
+  phone: z.string().trim().min(7, "Informe o telefone."),
+  notes: z.string().trim().max(300).optional(),
+});
+
+export async function createAppointmentAction(_state: AgendaActionState, formData: FormData): Promise<AgendaActionState> {
+  const parsed = createSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
+    return { status: "error", message: first ?? "Revise os dados do agendamento." };
+  }
+  try {
+    const session = await authorizeAction("appointments:edit");
+    const tenant = await db.tenant.findUniqueOrThrow({ where: { id: session.tenantId }, select: { timezone: true } });
+    const booking = await createInternalBooking({
+      tenantId: session.tenantId,
+      timezone: tenant.timezone,
+      createdById: session.userId,
+      ...parsed.data,
+    });
+    revalidatePath("/agenda");
+    revalidatePath("/agendamentos");
+    revalidatePath("/painel");
+    revalidatePath(`/barbearia/${session.tenantSlug}/agendar`);
+    const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: tenant.timezone, hour: "2-digit", minute: "2-digit" }).format(booking.startsAt);
+    return { status: "success", message: `${booking.serviceName} marcado para ${booking.customerName} com ${booking.staffName} às ${hora}.` };
+  } catch (error) {
+    if (error instanceof AuthorizationError) return { status: "error", message: "Seu perfil não pode criar agendamentos." };
+    if (error instanceof BookingError && error.code === "SLOT_CONFLICT") return { status: "error", message: "Este horário acabou de ser ocupado. Escolha outro." };
+    if (error instanceof BookingError && error.code === "RESOURCE_NOT_FOUND") return { status: "error", message: "Serviço não está mais disponível." };
+    console.error("CREATE_APPOINTMENT_FAILED", error);
+    return { status: "error", message: "Não foi possível criar o agendamento." };
   }
 }
 

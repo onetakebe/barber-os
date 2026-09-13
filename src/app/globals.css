@@ -7,6 +7,14 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface-base: var(--surface-base);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-invert: var(--surface-invert);
+  --color-surface-invert-muted: var(--surface-invert-muted);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-ink: var(--brand-ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-space-grotesk);
@@ -49,19 +57,34 @@
 }
 
 :root {
-  --background: oklch(0.105 0 0);
-  --foreground: oklch(0.97 0 0);
-  --card: oklch(0.145 0 0);
+  /* Escala de superfície: base -> painel -> elevado. Monocromática, mas com viés
+     quente (croma ~.005 no matiz 62) — o preto neutro puro é o que lia como chapado. */
+  --surface-base: #10100f;
+  /* Acento único (decisão B, 12/09): laranja vivo. Toca ícones em contêiner, item ativo
+     da navegação, progresso, CTA da superfície clara e UM hero em degradê por tela.
+     Nunca corpo de texto. 8,2:1 sobre a base e 6,8:1 sobre o card — passa AA em
+     rótulo pequeno; o laranja da referência (#E8431A) reprovava sobre card. */
+  --brand: #ff8c42;
+  --brand-deep: #d9571f;
+  --brand-ink: #1a0d06;
+  --surface-panel: #242320;
+  --surface-raised: #33312e;
+  --surface-invert: #f3f1ec;
+  --surface-invert-muted: #e4e0d8;
+
+  --background: var(--surface-base);
+  --foreground: #f3f1ec;
+  --card: var(--surface-panel);
   --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.17 0 0);
+  --popover: oklch(0.225 0.006 62);
   --popover-foreground: oklch(0.97 0 0);
-  --primary: oklch(0.97 0 0);
-  --primary-foreground: oklch(0.105 0 0);
-  --secondary: oklch(0.205 0 0);
+  --primary: #f3f1ec;
+  --primary-foreground: var(--surface-base);
+  --secondary: oklch(0.245 0.006 62);
   --secondary-foreground: oklch(0.94 0 0);
-  --muted: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.66 0 0);
-  --accent: oklch(0.25 0 0);
+  --muted: oklch(0.245 0.006 62);
+  --muted-foreground: #b7b4ae;
+  --accent: oklch(0.285 0.007 62);
   --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(1 0 0 / 10%);
@@ -73,11 +96,11 @@
   --chart-4: oklch(0.4 0 0);
   --chart-5: oklch(0.28 0 0);
   --radius: 0.7rem;
-  --sidebar: oklch(0.125 0 0);
+  --sidebar: #141413;
   --sidebar-foreground: oklch(0.92 0 0);
   --sidebar-primary: oklch(0.97 0 0);
   --sidebar-primary-foreground: oklch(0.105 0 0);
-  --sidebar-accent: oklch(0.22 0 0);
+  --sidebar-accent: oklch(0.262 0.006 62);
   --sidebar-accent-foreground: oklch(0.96 0 0);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.72 0 0);
@@ -93,11 +116,106 @@
   }
   body {
     @apply bg-background text-foreground;
-    background: #0a0a0a;
+  }
+  /* Grão no nível da página. Antes só existia sobre imagem (.image-grain), e por isso
+     as seções de cor sólida liam como chapado. */
+  body::after {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.18'/%3E%3C/svg%3E");
+    content: "";
+    inset: 0;
+    opacity: 0.038;
+    pointer-events: none;
+    position: fixed;
+    z-index: 60;
   }
   html {
     @apply font-sans;
   }
+  :where(a, button, input, select, textarea):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+  }
+}
+
+/* A light surface carries its own tokens, including nested controls in dark mode. */
+.light-panel {
+  color-scheme: light;
+  --background: #f3f1ec;
+  --foreground: #20201e;
+  --card: #f3f1ec;
+  --card-foreground: #20201e;
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-ink);
+  --secondary: #e4e0d8;
+  --secondary-foreground: #20201e;
+  --muted: #e4e0d8;
+  --muted-foreground: #64615b;
+  --accent: #e4e0d8;
+  --accent-foreground: #20201e;
+  --border: #d6d1c8;
+  --input: #c8c2b8;
+  --ring: #64615b;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Fundo do painel: a seda escura com brasa laranja escolhida pelo usuário em 12/09 (736×1472),
+   fixa no viewport, atrás de tudo. Sidebar, header e área de trabalho ficam
+   semitransparentes para a onda atravessar; os cards continuam opacos. */
+.dashboard-shell::before {
+  background: url("/images/dashboard-ember.jpg") center center / cover no-repeat;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+}
+
+/* Cabeçalho das telas de acesso: padrão geométrico (quartos de círculo e
+   quadrados) em branco a baixa opacidade sobre o preto quente. */
+.auth-pattern {
+  background-color: #0f0e0d;
+  background-image:
+    radial-gradient(circle at 0 0, rgb(255 255 255 / 9%) 0 46%, transparent 47%),
+    radial-gradient(circle at 100% 100%, rgb(255 255 255 / 9%) 0 46%, transparent 47%),
+    linear-gradient(rgb(255 255 255 / 4%), rgb(255 255 255 / 4%));
+  background-size: 56px 56px, 56px 56px, 28px 28px;
+  background-position: 0 0, 28px 28px, 14px 14px;
+  background-blend-mode: normal;
+}
+
+.dashboard-workspace {
+  background: color-mix(in srgb, #1a1917 66%, transparent);
+  border: 1px solid rgb(255 255 255 / 5%);
+  border-radius: 24px;
+}
+
+/* O único bloco saturado da tela. O glow é da própria cor e fica preso ao hero —
+   não vira sombra de card comum. */
+.hero-brand {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%), 0 28px 70px -34px rgb(255 140 66 / 55%);
+  color: var(--brand-ink);
+}
+
+.icon-tile {
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+  border-radius: 12px;
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+}
+
+.dashboard-card {
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 18px;
+  /* Translúcido de propósito (12/09): a brasa do fundo aparece de leve através
+     do card. O blur mantém o texto legível sobre as dobras laranja. */
+  background: color-mix(in srgb, var(--surface-panel) 80%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%), 0 8px 24px rgb(0 0 0 / 8%);
 }
 
 @layer utilities {
@@ -124,8 +242,39 @@
     z-index: 2;
   }
 
+  /* Profundidade sem sombra solta: luz de topo por dentro + assentamento suave.
+     Mantém a regra do Grafite de separar por hairline, não por sombra. */
   .panel-glow {
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 24px 80px rgb(0 0 0 / 28%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 24px 80px rgb(0 0 0 / 28%);
+  }
+
+  /* Malha de squircles inclinada, fixa no viewport.
+     É um elemento de verdade, não `::before` com z-index negativo: negativo pinta ANTES
+     do fundo dos blocos em fluxo do pai, então some atrás do `bg-background` do shell —
+     testado, a 45% de opacidade continuava invisível. Aqui fica em z-0 e o conteúdo
+     sobe para z-10. */
+  .surface-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='76' height='76'%3E%3Crect x='6' y='6' width='56' height='56' rx='20' fill='%23ffffff'/%3E%3C/svg%3E");
+    background-size: 76px 76px;
+    inset: -30%;
+    mask-image: radial-gradient(80% 65% at 22% 12%, #000 0%, rgb(0 0 0 / 55%) 45%, transparent 78%);
+    /* Teto medido: a base é rgb(15,13,11) e o card `surface-panel` é rgb(24,21,19).
+       A 0.032 o quadrado chega a ~rgb(22) — visível e ainda ABAIXO do card, preservando
+       a hierarquia. Acima de ~0.045 o fundo fica mais claro que os cards e inverte. */
+    opacity: 0.032;
+    pointer-events: none;
+    position: fixed;
+    rotate: 16deg;
+    z-index: 0;
+  }
+
+  /* Gradiente de fundo, não sombra: dá origem de luz a uma seção escura inteira. */
+  .surface-ambient {
+    background-image: radial-gradient(115% 80% at 50% 0%, oklch(1 0 0 / 4.5%) 0%, transparent 62%);
+  }
+
+  .surface-ambient-invert {
+    background-image: radial-gradient(115% 80% at 50% 0%, oklch(0 0 0 / 5%) 0%, transparent 62%);
   }
 
   .text-balance {

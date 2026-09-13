@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // A CLI (migrate/seed) prefere DIRECT_URL quando existir: no Supabase, migrações
+    // devem ir pela conexão direta ou pelo session pooler, nunca pelo transaction pooler.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });

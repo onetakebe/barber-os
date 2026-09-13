@@ -15,10 +15,15 @@ export type ModuleActionState = {
 
 const text = (label: string) => z.string().trim().min(2, `${label} é obrigatório.`);
 const positiveMoney = z.coerce.number().positive("Informe um valor maior que zero.");
+// Foto do profissional: URL http(s) ou caminho servido pelo próprio app (/images/...).
+const photoUrl = z.union([
+  z.literal(""),
+  z.string().trim().regex(/^(https?:\/\/|\/)\S+$/, "Informe uma URL http(s) ou um caminho começando com /."),
+]);
 
 const schemas = {
   clientes: z.object({ module: z.literal("clientes"), firstName: text("Nome"), lastName: text("Sobrenome"), email: z.union([z.literal(""), z.email("E-mail inválido.")]), phone: text("Telefone") }),
-  equipe: z.object({ module: z.literal("equipe"), displayName: text("Nome"), title: text("Função"), commissionPercent: z.coerce.number().min(0).max(100) }),
+  equipe: z.object({ module: z.literal("equipe"), displayName: text("Nome"), title: text("Função"), commissionPercent: z.coerce.number().min(0).max(100), imageUrl: photoUrl }),
   servicos: z.object({ module: z.literal("servicos"), name: text("Nome"), description: z.string().trim(), price: positiveMoney, durationMinutes: z.coerce.number().int().min(10).max(480) }),
   produtos: z.object({ module: z.literal("produtos"), name: text("Nome"), sku: text("SKU"), category: text("Categoria"), price: positiveMoney, cost: z.coerce.number().min(0), stock: z.coerce.number().int().min(0), minimumStock: z.coerce.number().int().min(0) }),
   campanhas: z.object({ module: z.literal("campanhas"), name: text("Nome"), audienceSegment: text("Público"), message: text("Mensagem") }),
@@ -62,7 +67,7 @@ export async function createModuleRecordAction(
     }
     if (parsed.data.module === "equipe") {
       const services = await db.service.findMany({ where: { tenantId: session.tenantId, isActive: true, deletedAt: null }, select: { id: true } });
-      const created = await db.staff.create({ data: { tenantId: session.tenantId, displayName: parsed.data.displayName, title: parsed.data.title, commissionBps: Math.round(parsed.data.commissionPercent * 100), services: { create: services.map((service) => ({ tenantId: session.tenantId, serviceId: service.id })) }, availability: { create: [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ tenantId: session.tenantId, dayOfWeek, startMinute: 540, endMinute: dayOfWeek === 6 ? 1080 : 1140, breakStartMinute: 780, breakEndMinute: 840 })) } } });
+      const created = await db.staff.create({ data: { tenantId: session.tenantId, displayName: parsed.data.displayName, title: parsed.data.title, imageUrl: parsed.data.imageUrl || null, commissionBps: Math.round(parsed.data.commissionPercent * 100), services: { create: services.map((service) => ({ tenantId: session.tenantId, serviceId: service.id })) }, availability: { create: [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({ tenantId: session.tenantId, dayOfWeek, startMinute: 540, endMinute: dayOfWeek === 6 ? 1080 : 1140, breakStartMinute: 780, breakEndMinute: 840 })) } } });
       entityId = created.id;
     }
     if (parsed.data.module === "servicos") {
@@ -136,11 +141,11 @@ export async function updateModuleRecordAction(
     if (parsed.data.module === "equipe") {
       previous = await db.staff.findFirst({
         where: { id: identity.data.id, tenantId: session.tenantId, deletedAt: null },
-        select: { displayName: true, title: true, commissionBps: true },
+        select: { displayName: true, title: true, commissionBps: true, imageUrl: true },
       });
       if (previous) await db.staff.updateMany({
         where: { id: identity.data.id, tenantId: session.tenantId, deletedAt: null },
-        data: { displayName: parsed.data.displayName, title: parsed.data.title, commissionBps: Math.round(parsed.data.commissionPercent * 100) },
+        data: { displayName: parsed.data.displayName, title: parsed.data.title, imageUrl: parsed.data.imageUrl || null, commissionBps: Math.round(parsed.data.commissionPercent * 100) },
       });
     }
 

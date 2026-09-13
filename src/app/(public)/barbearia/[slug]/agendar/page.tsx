@@ -14,7 +14,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
   const bookingCatalog = {
     business: { name: catalog.name, slug: catalog.slug, timezone: catalog.timezone, defaultDepositCents: catalog.defaultDepositCents, cancellationNoticeHours: catalog.cancellationNoticeHours },
     services: catalog.services,
-    staff: catalog.staff.map((member) => ({ id: member.id, displayName: member.displayName, title: member.title, imageUrl: member.imageUrl, serviceIds: member.services.map((service) => service.serviceId) })),
+    staff: catalog.staff.map((member) => ({ id: member.id, displayName: member.displayName, title: member.title, imageUrl: member.imageUrl, rating: member.rating, reviewCount: member.reviewCount, serviceIds: member.services.map((service) => service.serviceId) })),
     dates,
     initialServiceId: selection.servico,
     initialStaffId: selection.profissional,

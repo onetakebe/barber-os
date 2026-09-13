@@ -90,15 +90,17 @@ async function seed() {
   }
 
   const staffSeeds = [
-    { name: "Lucas Moreira", userId: users[3].id, title: "Barbeiro sênior", color: "#8B5CF6", commissionBps: 4800 },
-    { name: "Diego Santos", title: "Barbeiro", color: "#C4B5FD", commissionBps: 4500 },
-    { name: "Marco Almeida", title: "Barbeiro", color: "#B7F34A", commissionBps: 4500 },
-    { name: "André Costa", title: "Barbeiro", color: "#F59E0B", commissionBps: 4200 },
+    { name: "Lucas Moreira", userId: users[3].id, title: "Barbeiro sênior", color: "#8B5CF6", commissionBps: 4800, imageUrl: "/images/staff/lucas-moreira.png" },
+    { name: "Diego Santos", title: "Barbeiro", color: "#C4B5FD", commissionBps: 4500, imageUrl: "/images/staff/diego-santos.png" },
+    { name: "Marco Almeida", title: "Barbeiro", color: "#B7F34A", commissionBps: 4500, imageUrl: "/images/staff/marco-almeida.png" },
+    { name: "André Costa", title: "Barbeiro", color: "#F59E0B", commissionBps: 4200, imageUrl: "/images/staff/andre-costa.png" },
   ];
   const staff = [];
   for (const item of staffSeeds) {
     const existing = await prisma.staff.findFirst({ where: { tenantId, displayName: item.name } });
-    const member = existing ?? await prisma.staff.create({ data: { tenantId, displayName: item.name, userId: item.userId, title: item.title, color: item.color, commissionBps: item.commissionBps } });
+    const member = existing
+      ? await prisma.staff.update({ where: { id: existing.id }, data: { imageUrl: item.imageUrl } })
+      : await prisma.staff.create({ data: { tenantId, displayName: item.name, userId: item.userId, title: item.title, color: item.color, commissionBps: item.commissionBps, imageUrl: item.imageUrl } });
     staff.push(member);
     for (let day = 1; day <= 6; day += 1) {
       await prisma.availability.upsert({ where: { tenantId_staffId_dayOfWeek_startMinute: { tenantId, staffId: member.id, dayOfWeek: day, startMinute: 540 } }, update: {}, create: { tenantId, staffId: member.id, dayOfWeek: day, startMinute: 540, endMinute: day === 6 ? 1080 : 1140, breakStartMinute: 780, breakEndMinute: 840 } });
@@ -151,8 +153,14 @@ async function seed() {
 
   for (let index = 0; index < 6; index += 1) await prisma.waitlistEntry.create({ data: { tenantId, customerId: customers[50 + index].id, serviceId: services[index % services.length].id, staffId: index % 2 === 0 ? staff[index % staff.length].id : null, desiredDate: new Date(), windowStartMinute: 960, windowEndMinute: 1140, minimumNoticeMinutes: 40, priorityScore: 100 - index * 4, status: WaitlistStatus.WAITING } });
 
-  const productSeeds = [["Pomada Matte Club", "AS-PM-01", 2200, 800, 4], ["Óleo de Barba Nº 7", "AS-OB-07", 2600, 900, 12], ["Shampoo Daily Clean", "RZ-SH-12", 1900, 1000, 8], ["Pente Carbon Pro", "UP-PC-02", 1400, 500, 2]] as const;
-  for (const [name, sku, priceCents, costCents, stock] of productSeeds) await prisma.product.upsert({ where: { tenantId_sku: { tenantId, sku } }, update: { stock }, create: { tenantId, name, sku, priceCents, costCents, stock, minimumStock: 4, category: "Retail" } });
+  // Fotos geradas em 13/09/2026 (Codex, série coesa com os retratos) em public/images.
+  const productSeeds = [
+    ["Pomada Matte Club", "AS-PM-01", 2200, 800, 4, "/images/product-pomade-matte-club.webp", "Fixação média, acabamento fosco. A que usamos na cadeira."],
+    ["Óleo de Barba Nº 7", "AS-OB-07", 2600, 900, 12, "/images/product-beard-oil-n7.webp", "Amacia e disciplina a barba, sem brilho excessivo."],
+    ["Shampoo Daily Clean", "RZ-SH-12", 1900, 1000, 8, "/images/product-shampoo-daily-clean.webp", "Limpeza leve para uso diário, sem ressecar."],
+    ["Pente Carbon Pro", "UP-PC-02", 1400, 500, 2, "/images/product-comb-carbon-pro.webp", "Fibra de carbono, antiestático, dentes finos e grossos."],
+  ] as const;
+  for (const [name, sku, priceCents, costCents, stock, imageUrl, description] of productSeeds) await prisma.product.upsert({ where: { tenantId_sku: { tenantId, sku } }, update: { stock, imageUrl, description }, create: { tenantId, name, sku, priceCents, costCents, stock, minimumStock: 4, category: "Retail", imageUrl, description } });
 
   await prisma.loyaltyProgram.upsert({ where: { tenantId_name: { tenantId, name: "AS Club" } }, update: {}, create: { tenantId, name: "AS Club", pointsPerVisit: 10, pointsPerEuro: 1 } });
   for (const reward of [["Upgrade de finalização", 350, "UPGRADE"], ["Barba Premium", 900, "FREE_SERVICE"], ["Crédito de €10", 650, "CREDIT"]] as const) await prisma.reward.upsert({ where: { tenantId_name: { tenantId, name: reward[0] } }, update: {}, create: { tenantId, name: reward[0], pointsCost: reward[1], benefitType: reward[2] } });

@@ -6,15 +6,13 @@ import { Archive, Filter, Gift, PackagePlus, Search } from "lucide-react";
 import { adjustInventoryAction, archiveModuleRecordAction, redeemRewardAction, type ModuleActionState } from "@/app/(dashboard)/actions";
 import { AppointmentCancelButton } from "@/components/dashboard/appointment-actions";
 import { EditModuleRecordDialog } from "@/components/dashboard/module-action";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { filterRows } from "@/domain/search/filter-rows";
-import type { ModuleSlug } from "@/server/data/module-data";
+import { StaffAvatar } from "@/components/staff-avatar";
+import type { ModuleSlug, RowAvatar } from "@/server/data/module-data";
 
-type Row = { id: string; cells: string[]; edit?: Record<string, string | number> };
+type Row = { id: string; cells: string[]; avatars?: Record<number, RowAvatar>; edit?: Record<string, string | number> };
 const initialState: ModuleActionState = { status: "idle" };
 const archiveModules: ModuleSlug[] = ["clientes", "equipe", "servicos", "produtos"];
 
@@ -50,5 +48,62 @@ export function ModuleTable({ module, columns, rows, canMutate }: { module: Modu
     return highlightsOnly ? filtered.slice(0, 3) : filtered;
   }, [rows, query, highlightsOnly]);
 
-  return <Card className="overflow-hidden border-white/8 py-0"><CardHeader className="border-b border-white/8 py-5 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle className="font-heading text-base">Visão operacional</CardTitle><CardDescription>{visibleRows.length} de {rows.length} registros</CardDescription></div><div className="flex gap-2"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." className="w-full pl-9 sm:w-56" /></div><Button type="button" variant={highlightsOnly ? "default" : "outline"} size="icon" aria-pressed={highlightsOnly} onClick={() => setHighlightsOnly((current) => !current)}><Filter /><span className="sr-only">Mostrar destaques</span></Button></div></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow>{columns.map((column) => <TableHead key={column}>{column}</TableHead>)}{hasActions ? <TableHead className="text-right">Ações</TableHead> : null}</TableRow></TableHeader><TableBody>{visibleRows.map((row) => <TableRow key={row.id}>{row.cells.map((cell, cellIndex) => <TableCell key={`${row.id}-${cellIndex}`} className={cellIndex === 0 ? "font-medium" : "text-muted-foreground"}>{cellIndex === row.cells.length - 1 ? <Badge variant="secondary">{cell}</Badge> : cell}</TableCell>)}{hasActions ? <TableCell className="text-right"><RowActions row={row} module={module} /></TableCell> : null}</TableRow>)}</TableBody></Table>{visibleRows.length === 0 ? <div className="p-10 text-center text-sm text-muted-foreground">Nenhum registro corresponde à busca.</div> : null}</CardContent></Card>;
+  return (
+    <section className="overflow-hidden rounded-2xl border border-white/12 bg-surface-panel">
+      <div className="flex flex-col gap-4 border-b border-white/12 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-[.18em] text-white/45">
+          {visibleRows.length} de {rows.length} registros
+        </p>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." className="w-full border-white/15 bg-transparent pl-9 dark:bg-transparent sm:w-64" />
+          </div>
+          <Button type="button" variant={highlightsOnly ? "default" : "outline"} size="icon" aria-pressed={highlightsOnly} onClick={() => setHighlightsOnly((current) => !current)}>
+            <Filter />
+            <span className="sr-only">Mostrar apenas os primeiros</span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-white/15">
+              {columns.map((column) => (
+                <th key={column} scope="col" className="px-6 py-4 font-mono text-[10px] font-normal uppercase tracking-[.18em] text-white/45">{column}</th>
+              ))}
+              {hasActions ? <th scope="col" className="px-6 py-4 text-right font-mono text-[10px] font-normal uppercase tracking-[.18em] text-white/45">Ações</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => (
+              <tr key={row.id} className="border-b border-white/10 transition-colors last:border-b-0 hover:bg-white/[.055]">
+                {row.cells.map((cell, cellIndex) => {
+                  const face = row.avatars?.[cellIndex];
+                  return (
+                    <td key={`${row.id}-${cellIndex}`} className={cellIndex === 0 ? "font-heading px-6 py-5 text-sm font-semibold tracking-[-.02em]" : "px-6 py-5 font-mono text-xs text-white/60"}>
+                      {face ? (
+                        <span className="flex items-center gap-2.5">
+                          <StaffAvatar imageUrl={face.imageUrl} initials={face.initials} color={face.color} className="size-7" />
+                          <span className="truncate">{cell}</span>
+                        </span>
+                      ) : cell}
+                    </td>
+                  );
+                })}
+                {hasActions ? <td className="px-6 py-5 text-right">{<RowActions row={row} module={module} />}</td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {visibleRows.length === 0 ? (
+        <p className="border-b border-white/10 px-4 py-16 text-center text-sm text-white/45">
+          {rows.length === 0 ? "Nada registrado ainda. O primeiro registro aparece aqui." : "Nenhum registro corresponde à busca."}
+        </p>
+      ) : null}
+    </section>
+  );
 }

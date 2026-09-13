@@ -1,6 +1,16 @@
+import Link from "next/link";
+
 import { RecoverForm } from "@/components/auth/auth-forms";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 
 export default function RecoverPage() {
-  return <Card className="w-full max-w-md"><CardHeader><CardTitle className="font-heading text-2xl">Recuperar acesso</CardTitle><CardDescription>Simularemos o envio de um link seguro para seu e-mail.</CardDescription></CardHeader><CardContent><RecoverForm /></CardContent></Card>;
+  return (
+    <AuthShell title="Recuperar acesso" back={{ href: "/login", label: "Voltar para entrar" }}>
+      <p className="mb-5 text-sm text-muted-foreground">Enviaremos um link para redefinir a senha no e-mail da sua conta.</p>
+      <RecoverForm />
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Lembrou a senha? <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">Entrar</Link>
+      </p>
+    </AuthShell>
+  );
 }
