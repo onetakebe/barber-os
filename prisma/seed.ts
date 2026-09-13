@@ -153,8 +153,14 @@ async function seed() {
 
   for (let index = 0; index < 6; index += 1) await prisma.waitlistEntry.create({ data: { tenantId, customerId: customers[50 + index].id, serviceId: services[index % services.length].id, staffId: index % 2 === 0 ? staff[index % staff.length].id : null, desiredDate: new Date(), windowStartMinute: 960, windowEndMinute: 1140, minimumNoticeMinutes: 40, priorityScore: 100 - index * 4, status: WaitlistStatus.WAITING } });
 
-  const productSeeds = [["Pomada Matte Club", "AS-PM-01", 2200, 800, 4], ["Óleo de Barba Nº 7", "AS-OB-07", 2600, 900, 12], ["Shampoo Daily Clean", "RZ-SH-12", 1900, 1000, 8], ["Pente Carbon Pro", "UP-PC-02", 1400, 500, 2]] as const;
-  for (const [name, sku, priceCents, costCents, stock] of productSeeds) await prisma.product.upsert({ where: { tenantId_sku: { tenantId, sku } }, update: { stock }, create: { tenantId, name, sku, priceCents, costCents, stock, minimumStock: 4, category: "Retail" } });
+  // Fotos geradas em 13/09/2026 (Codex, série coesa com os retratos) em public/images.
+  const productSeeds = [
+    ["Pomada Matte Club", "AS-PM-01", 2200, 800, 4, "/images/product-pomade-matte-club.webp", "Fixação média, acabamento fosco. A que usamos na cadeira."],
+    ["Óleo de Barba Nº 7", "AS-OB-07", 2600, 900, 12, "/images/product-beard-oil-n7.webp", "Amacia e disciplina a barba, sem brilho excessivo."],
+    ["Shampoo Daily Clean", "RZ-SH-12", 1900, 1000, 8, "/images/product-shampoo-daily-clean.webp", "Limpeza leve para uso diário, sem ressecar."],
+    ["Pente Carbon Pro", "UP-PC-02", 1400, 500, 2, "/images/product-comb-carbon-pro.webp", "Fibra de carbono, antiestático, dentes finos e grossos."],
+  ] as const;
+  for (const [name, sku, priceCents, costCents, stock, imageUrl, description] of productSeeds) await prisma.product.upsert({ where: { tenantId_sku: { tenantId, sku } }, update: { stock, imageUrl, description }, create: { tenantId, name, sku, priceCents, costCents, stock, minimumStock: 4, category: "Retail", imageUrl, description } });
 
   await prisma.loyaltyProgram.upsert({ where: { tenantId_name: { tenantId, name: "AS Club" } }, update: {}, create: { tenantId, name: "AS Club", pointsPerVisit: 10, pointsPerEuro: 1 } });
   for (const reward of [["Upgrade de finalização", 350, "UPGRADE"], ["Barba Premium", 900, "FREE_SERVICE"], ["Crédito de €10", 650, "CREDIT"]] as const) await prisma.reward.upsert({ where: { tenantId_name: { tenantId, name: reward[0] } }, update: {}, create: { tenantId, name: reward[0], pointsCost: reward[1], benefitType: reward[2] } });
