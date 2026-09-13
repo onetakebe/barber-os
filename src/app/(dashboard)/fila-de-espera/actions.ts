@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { AuthorizationError, authorizeAction } from "@/server/auth/authorization";
 import { getPublicAvailability } from "@/server/data/public-booking";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { MockWhatsAppProvider } from "@/server/integrations/messaging";
 
 export type WaitlistActionState = { status: "idle" | "success" | "error"; message?: string; errors?: Record<string, string[]> };
@@ -24,6 +24,7 @@ export async function createWaitlistEntryAction(_state: WaitlistActionState, for
   if (!parsed.success) return { status: "error", errors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
   try {
     const session = await authorizeAction("waitlist:edit");
+    const db = tenantDb(session.tenantId);
     const [customer, service, staff] = await Promise.all([
       db.customer.findFirst({ where: { id: parsed.data.customerId, tenantId: session.tenantId, deletedAt: null }, select: { id: true, loyaltyPoints: true } }),
       db.service.findFirst({ where: { id: parsed.data.serviceId, tenantId: session.tenantId, deletedAt: null, isActive: true }, select: { id: true } }),
@@ -47,6 +48,7 @@ export async function offerWaitlistSlotAction(_state: WaitlistActionState, formD
   if (!parsed.success) return { status: "error", message: "Entrada inválida." };
   try {
     const session = await authorizeAction("waitlist:edit");
+    const db = tenantDb(session.tenantId);
     const entry = await db.waitlistEntry.findFirst({ where: { id: parsed.data.entryId, tenantId: session.tenantId }, include: { tenant: { select: { slug: true } }, customer: { select: { id: true, firstName: true, phone: true } }, service: { select: { id: true, name: true } } } });
     if (!entry || entry.status !== "WAITING") return { status: "error", message: "Esta entrada não está mais aguardando." };
     const date = entry.desiredDate.toISOString().slice(0, 10);
@@ -60,7 +62,7 @@ export async function offerWaitlistSlotAction(_state: WaitlistActionState, formD
     if (!slot) return { status: "error", message: "Nenhum horário compatível está disponível nesta janela." };
     const message = await new MockWhatsAppProvider().send({ recipient: entry.customer.phone, templateKey: "waitlist_offer", variables: { firstName: entry.customer.firstName, service: entry.service.name, time: slot.time } });
     const expiresAt = new Date(now.getTime() + 10 * 60_000);
-    await db.$transaction(async (tx) => {
+    await tenantTransaction(session.tenantId, async (tx) => {
       const claimed = await tx.waitlistEntry.updateMany({ where: { id: entry.id, tenantId: session.tenantId, status: "WAITING" }, data: { status: "OFFERED" } });
       if (!claimed.count) throw new Error("WAITLIST_ALREADY_OFFERED");
       await tx.waitlistOffer.create({ data: { tenantId: session.tenantId, waitlistEntryId: entry.id, offeredStartsAt: new Date(slot.startsAt), expiresAt, status: "OFFERED" } });

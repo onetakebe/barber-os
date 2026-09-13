@@ -102,6 +102,8 @@ enum SubscriptionStatus {
 model User {
   id            String       @id @default(cuid())
   email         String       @unique
+  // Id em auth.users do Supabase (etapa 2). Null só para contas ainda não migradas.
+  authUserId    String?      @unique
   passwordHash  String?
   firstName     String
   lastName      String
@@ -112,8 +114,8 @@ model User {
   updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
   deletedAt     DateTime?    @db.Timestamptz(3)
   accounts      Account[]
-  sessions      Session[]
   memberships   Membership[]
+  sentInvitations Invitation[] @relation("InvitationInvitedBy")
   staffProfiles Staff[]
   auditLogs     AuditLog[]
 }
@@ -135,19 +137,6 @@ model Account {
 
   @@unique([provider, providerAccountId])
   @@index([userId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  tenantId     String
-  expires      DateTime @db.Timestamptz(3)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([userId, expires])
-  @@index([tenantId, expires])
 }
 
 model Tenant {
@@ -172,7 +161,7 @@ model Tenant {
   deletedAt                DateTime?                  @db.Timestamptz(3)
   units                    BusinessUnit[]
   memberships              Membership[]
-  sessions                 Session[]
+  invitations              Invitation[]
   customers                Customer[]
   staff                    Staff[]
   categories               ServiceCategory[]
@@ -297,6 +286,7 @@ model Staff {
   deletedAt         DateTime?         @db.Timestamptz(3)
   tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user              User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  invitations       Invitation[]
   services          StaffService[]
   availability      Availability[]
   timeOff           TimeOff[]
@@ -925,4 +915,25 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, entityType, entityId])
   @@index([userId])
+}
+
+// Convite de equipe (etapa 2 / T3): o e-mail sai pelo Supabase Auth; aqui fica quem
+// convidou, com qual perfil, validade e aceite. Aceitar = criar User (se preciso) + Membership.
+model Invitation {
+  id          String    @id @default(cuid())
+  tenantId    String
+  email       String
+  role        Role
+  staffId     String?
+  invitedById String
+  expiresAt   DateTime  @db.Timestamptz(3)
+  acceptedAt  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  staff       Staff?    @relation(fields: [staffId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@index([email])
 }

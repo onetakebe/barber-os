@@ -6,7 +6,7 @@ import { z } from "zod";
 import { resolveCancellation } from "@/domain/finance/deposits";
 import { parseAvailabilityWindow } from "@/domain/scheduling/availability-rules";
 import { AuthorizationError, authorizeAction } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb, tenantTransaction } from "@/server/db";
 import { localDateTimeToUtc } from "@/server/services/availability";
 import { BookingError } from "@/server/services/booking";
 import { createInternalBooking } from "@/server/services/internal-booking";
@@ -20,12 +20,13 @@ export async function cancelAppointmentAction(_state: AgendaActionState, formDat
   if (!parsed.success) return { status: "error", message: "Agendamento inválido." };
   try {
     const session = await authorizeAction("appointments:edit");
+    const db = tenantDb(session.tenantId);
     const appointment = await db.appointment.findFirst({ where: { id: parsed.data.appointmentId, tenantId: session.tenantId, deletedAt: null }, include: { deposit: true, tenant: { select: { cancellationNoticeHours: true } } } });
     if (!appointment) return { status: "error", message: "Agendamento não encontrado." };
     if (!cancellableStatuses.includes(appointment.status as (typeof cancellableStatuses)[number])) return { status: "error", message: "Este agendamento não pode mais ser cancelado." };
     const cancellation = resolveCancellation({ appointmentAt: appointment.startsAt, cancelledAt: new Date(), noticeHours: appointment.tenant.cancellationNoticeHours, depositCents: appointment.deposit?.amountCents ?? 0 });
 
-    await db.$transaction(async (tx) => {
+    await tenantTransaction(session.tenantId, async (tx) => {
       const changed = await tx.appointment.updateMany({
         where: { id: appointment.id, tenantId: session.tenantId, deletedAt: null, status: { in: [...cancellableStatuses] } },
         data: { status: "CANCELLED_BY_BUSINESS" },
@@ -69,6 +70,7 @@ export async function createAppointmentAction(_state: AgendaActionState, formDat
   }
   try {
     const session = await authorizeAction("appointments:edit");
+    const db = tenantDb(session.tenantId);
     const tenant = await db.tenant.findUniqueOrThrow({ where: { id: session.tenantId }, select: { timezone: true } });
     const booking = await createInternalBooking({
       tenantId: session.tenantId,
@@ -106,11 +108,12 @@ export async function saveAvailabilityAction(_state: AgendaActionState, formData
   if (!parsed.success) return { status: "error", message: "Revise a jornada informada." };
   try {
     const session = await authorizeAction("team:edit");
+    const db = tenantDb(session.tenantId);
     const staff = await db.staff.findFirst({ where: { id: parsed.data.staffId, tenantId: session.tenantId, deletedAt: null }, select: { id: true } });
     if (!staff) return { status: "error", message: "Profissional não encontrado neste ambiente." };
 
     const window = parsed.data.enabled === "true" ? parseAvailabilityWindow(parsed.data) : null;
-    await db.$transaction(async (tx) => {
+    await tenantTransaction(session.tenantId, async (tx) => {
       const previous = await tx.availability.findMany({ where: { tenantId: session.tenantId, staffId: staff.id, dayOfWeek: parsed.data.dayOfWeek } });
       await tx.availability.deleteMany({ where: { tenantId: session.tenantId, staffId: staff.id, dayOfWeek: parsed.data.dayOfWeek } });
       if (window) await tx.availability.create({ data: { tenantId: session.tenantId, staffId: staff.id, dayOfWeek: parsed.data.dayOfWeek, ...window } });
@@ -145,6 +148,7 @@ export async function createTimeOffAction(_state: AgendaActionState, formData: F
   if (!parsed.success) return { status: "error", message: "Preencha o período e o motivo do bloqueio." };
   try {
     const session = await authorizeAction("team:edit");
+    const db = tenantDb(session.tenantId);
     const [tenant, staff] = await Promise.all([
       db.tenant.findUniqueOrThrow({ where: { id: session.tenantId }, select: { timezone: true } }),
       db.staff.findFirst({ where: { id: parsed.data.staffId, tenantId: session.tenantId, deletedAt: null }, select: { id: true } }),
@@ -172,6 +176,7 @@ export async function removeTimeOffAction(_state: AgendaActionState, formData: F
   if (!parsed.success) return { status: "error", message: "Bloqueio inválido." };
   try {
     const session = await authorizeAction("team:edit");
+    const db = tenantDb(session.tenantId);
     const removed = await db.timeOff.deleteMany({ where: { id: parsed.data.timeOffId, tenantId: session.tenantId } });
     if (!removed.count) return { status: "error", message: "Bloqueio não encontrado neste ambiente." };
     await db.auditLog.create({ data: { tenantId: session.tenantId, userId: session.userId, action: "DELETE_TIME_OFF", entityType: "TimeOff", entityId: parsed.data.timeOffId } });

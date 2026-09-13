@@ -2,16 +2,18 @@ import "dotenv/config";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { db } from "@/server/db";
+import { adminDb, tenantDb, type ScopedDb } from "@/server/db";
 
 describe.sequential("PostgreSQL persistence invariants", () => {
   let tenantId: string;
+  let db: ScopedDb;
   let customerId: string;
   let staffId: string;
   const appointmentIds = ["e2e-conflict-a", "e2e-conflict-b"];
 
   beforeAll(async () => {
-    const tenant = await db.tenant.findUniqueOrThrow({ where: { slug: "as-barber-club" }, select: { id: true } });
+    const tenant = await adminDb.tenant.findUniqueOrThrow({ where: { slug: "as-barber-club" }, select: { id: true } });
+    db = tenantDb(tenant.id);
     const staff = await db.staff.findFirstOrThrow({ where: { tenantId: tenant.id, deletedAt: null }, select: { id: true } });
     const customer = await db.customer.create({ data: { tenantId: tenant.id, firstName: "Conflito", lastName: "Integration", phone: "+32 470 00 99 01" } });
     tenantId = tenant.id;
@@ -35,7 +37,7 @@ describe.sequential("PostgreSQL persistence invariants", () => {
   });
 
   it("does not return a resource when queried through another tenant scope", async () => {
-    const otherTenant = await db.tenant.findUniqueOrThrow({ where: { slug: "north-cut-demo" }, select: { id: true } });
+    const otherTenant = await adminDb.tenant.findUniqueOrThrow({ where: { slug: "north-cut-demo" }, select: { id: true } });
     await expect(db.customer.findFirst({ where: { id: customerId, tenantId: otherTenant.id } })).resolves.toBeNull();
   });
 });

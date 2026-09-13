@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 
 import { ModuleAction } from "@/components/dashboard/module-action";
+import { TeamAccess } from "@/components/dashboard/team-access";
+import { listTeamAccess } from "@/server/services/invitations";
 import { ModuleTable } from "@/components/dashboard/module-table";
 import { authorize, type Permission } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
-import { db } from "@/server/db";
+import { tenantDb } from "@/server/db";
 import { getModuleData, moduleMeta, type ModuleSlug } from "@/server/data/module-data";
 
 const mutatePermissions: Record<ModuleSlug, Permission> = {
@@ -24,6 +26,7 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   if (!(module in moduleMeta)) notFound();
   const slug = module as ModuleSlug;
   const session = await requirePermission(moduleMeta[slug].permission);
+  const db = tenantDb(session.tenantId);
   const professionalStaff = session.role === "PROFESSIONAL" ? await db.staff.findFirst({ where: { tenantId: session.tenantId, userId: session.userId, deletedAt: null }, select: { id: true } }) : undefined;
   const definition = await getModuleData(slug, session.tenantId, professionalStaff?.id ?? (session.role === "PROFESSIONAL" ? null : undefined));
   const canMutate = authorize(session.role, mutatePermissions[slug]);
@@ -49,6 +52,15 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
       </section>
 
       <ModuleTable module={slug} columns={definition.columns} rows={definition.rows} canMutate={canMutate} />
+      {slug === "equipe" ? <TeamAccessSection tenantId={session.tenantId} canInvite={authorize(session.role, "team:invite")} /> : null}
     </div>
   );
+}
+
+async function TeamAccessSection({ tenantId, canInvite }: { tenantId: string; canInvite: boolean }) {
+  const access = await listTeamAccess(tenantId);
+  const db = tenantDb(tenantId);
+  // Profissionais da agenda ainda sem login, para vincular ao convite.
+  const staff = canInvite ? await db.staff.findMany({ where: { tenantId, deletedAt: null, userId: null }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }) : [];
+  return <TeamAccess data={{ ...access, staffOptions: staff.map((item) => ({ id: item.id, name: item.displayName })) }} canInvite={canInvite} />;
 }

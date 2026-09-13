@@ -1,4 +1,4 @@
-import { db } from "@/server/db";
+import { adminDb, tenantDb } from "@/server/db";
 import { getAvailableSlotsFromRecords, localDateTimeToUtc } from "@/server/services/availability";
 
 const activeStatuses = ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"] as const;
@@ -19,7 +19,8 @@ export function getBookableDates(timezone: string, now = new Date()) {
 }
 
 export async function getPublicBookingCatalog(slug: string) {
-  const tenant = await db.tenant.findFirst({
+  // A página pública chega por slug, sem barbearia conhecida: só esta leitura ignora a trava.
+  const tenant = await adminDb.tenant.findFirst({
     where: { slug, deletedAt: null },
     select: {
       id: true,
@@ -59,6 +60,7 @@ export async function getPublicBookingCatalog(slug: string) {
     },
   });
   if (!tenant) return null;
+  const db = tenantDb(tenant.id);
 
   const ratings = await db.review.groupBy({
     by: ["staffId"],
@@ -80,6 +82,7 @@ export async function getPublicBookingCatalog(slug: string) {
 /** Núcleo da disponibilidade, por tenant. A reserva pública chega por slug; o painel já tem o
  *  tenantId da sessão e não deve pagar uma consulta a mais nem duplicar a regra. */
 export async function getAvailabilityForTenant(input: { tenantId: string; timezone: string; date: string; serviceId: string; staffId?: string }) {
+  const db = tenantDb(input.tenantId);
   const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: input.tenantId, isActive: true, deletedAt: null }, select: { id: true, durationMinutes: true } });
   if (!service) return null;
 
@@ -106,7 +109,7 @@ export async function getAvailabilityForTenant(input: { tenantId: string; timezo
 }
 
 export async function getPublicAvailability(input: { slug: string; date: string; serviceId: string; staffId?: string }) {
-  const tenant = await db.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true } });
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true } });
   if (!tenant) return null;
   return getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceId: input.serviceId, staffId: input.staffId });
 }

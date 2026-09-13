@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { calculateDeposit } from "@/domain/finance/deposits";
-import { db } from "@/server/db";
+import { adminDb, tenantDb, tenantTransaction } from "@/server/db";
 import { getPublicAvailability } from "@/server/data/public-booking";
 import { MockPaymentGateway } from "@/server/integrations/payment";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
@@ -19,8 +19,9 @@ export type CreatePublicBookingInput = {
 };
 
 export async function createPublicBooking(input: CreatePublicBookingInput) {
-  const tenant = await db.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, currency: true, defaultDepositCents: true, cancellationNoticeHours: true } });
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, currency: true, defaultDepositCents: true, cancellationNoticeHours: true } });
   if (!tenant) throw new BookingError("RESOURCE_NOT_FOUND");
+  const db = tenantDb(tenant.id);
   const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: tenant.id, isActive: true, deletedAt: null }, select: { id: true, name: true, priceCents: true, durationMinutes: true, depositRequired: true } });
   if (!service) throw new BookingError("RESOURCE_NOT_FOUND");
 
@@ -35,7 +36,7 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
   if (paymentResult?.status === "FAILED") throw new BookingError("PAYMENT_FAILED");
 
   try {
-    return await db.$transaction(async (tx) => {
+    return await tenantTransaction(tenant.id, async (tx) => {
       const customer = await tx.customer.upsert({
         where: { tenantId_phone: { tenantId: tenant.id, phone: input.phone } },
         update: { firstName: input.firstName, lastName: input.lastName, email: input.email || null },

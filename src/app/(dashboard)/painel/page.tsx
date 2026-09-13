@@ -12,7 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { authorize } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
 import { getDashboardData } from "@/server/data/dashboard";
-import { db } from "@/server/db";
+import { tenantDb } from "@/server/db";
 
 // Um ícone por indicador, na ordem em que getDashboardData os devolve.
 const metricIcons = [TrendingUp, CalendarClock, Clock3, Users];
@@ -62,6 +62,7 @@ const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currenc
 
 export default async function DashboardPage() {
   const session = await requirePermission("appointments:view");
+  const db = tenantDb(session.tenantId);
   const canViewFinance = authorize(session.role, "finance:view");
   const canEditAppointments = authorize(session.role, "appointments:edit");
   const canManageWaitlist = authorize(session.role, "waitlist:edit");

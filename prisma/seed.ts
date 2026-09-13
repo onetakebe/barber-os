@@ -6,7 +6,8 @@ import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { AppointmentStatus, CampaignStatus, LoyaltyTransactionType, NotificationChannel, NotificationStatus, PaymentMethod, PaymentStatus, Role, WaitlistStatus } from "../src/generated/prisma/enums";
 
-const connectionString = process.env.DATABASE_URL;
+// Seed e scripts administrativos gravam em várias barbearias: papel postgres (DIRECT_URL), que ignora a trava.
+const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL_MISSING");
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
@@ -55,7 +56,6 @@ async function seed() {
     await tx.staff.deleteMany({ where });
     await tx.customer.deleteMany({ where });
     await tx.businessUnit.deleteMany({ where });
-    await tx.session.deleteMany({ where });
     await tx.membership.deleteMany({ where });
     await tx.tenant.deleteMany({ where: { id: tenantId } });
   });

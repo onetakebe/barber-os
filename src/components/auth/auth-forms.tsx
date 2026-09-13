@@ -6,7 +6,9 @@ import Link from "next/link";
 import {
   loginAction,
   recoverAction,
+  resendConfirmationAction,
   signupAction,
+  updatePasswordAction,
   type AuthActionState,
 } from "@/app/(auth)/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -40,7 +42,7 @@ export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, initialAuthState);
   return (
     <form action={action} className="flex flex-col gap-3.5">
-      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}{state.message.startsWith("Confirme seu e-mail") ? <> <Link href="/confirmar-email" className="underline underline-offset-4">Reenviar e-mail</Link>.</> : null}</AlertDescription></Alert> : null}
       <FieldBox id="email" label="E-mail" error={state.errors?.email}>
         <Input id="email" name="email" type="email" autoComplete="email" placeholder="voce@barbearia.com" required className={boxInput} />
       </FieldBox>
@@ -59,7 +61,7 @@ export function SignupForm({ social = null }: { social?: SocialPrefill | null })
   return (
     <form action={action} className="flex flex-col gap-3.5">
       {social ? <input type="hidden" name="social" value="1" /> : null}
-      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      {state.message ? <Alert variant={state.status === "success" ? "default" : "destructive"}><AlertDescription>{state.message}</AlertDescription></Alert> : null}
       <div className="grid gap-3.5 sm:grid-cols-2">
         <FieldBox id="firstName" label="Nome" error={state.errors?.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" defaultValue={social?.firstName} required className={boxInput} /></FieldBox>
         <FieldBox id="lastName" label="Sobrenome" error={state.errors?.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" defaultValue={social?.lastName} required className={boxInput} /></FieldBox>
@@ -90,6 +92,29 @@ export function RecoverForm() {
       {state.message ? <Alert><AlertDescription>{state.message}</AlertDescription></Alert> : null}
       <FieldBox id="recoverEmail" label="E-mail" error={state.errors?.email}><Input id="recoverEmail" name="email" type="email" autoComplete="email" placeholder="voce@barbearia.com" required className={boxInput} /></FieldBox>
       <Button type="submit" size="lg" className="mt-2 w-full" disabled={pending}>{pending ? "Enviando..." : "Enviar link"}</Button>
+    </form>
+  );
+}
+
+export function UpdatePasswordForm() {
+  const [state, action, pending] = useActionState(updatePasswordAction, initialAuthState);
+  return (
+    <form action={action} className="flex flex-col gap-3.5">
+      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      <FieldBox id="newPassword" label="Nova senha" error={state.errors?.password}><Input id="newPassword" name="password" type="password" autoComplete="new-password" placeholder="Mín. 8 caracteres, letra e número" required className={boxInput} /></FieldBox>
+      <FieldBox id="confirmNewPassword" label="Confirmar senha" error={state.errors?.confirmPassword}><Input id="confirmNewPassword" name="confirmPassword" type="password" autoComplete="new-password" required className={boxInput} /></FieldBox>
+      <Button type="submit" size="lg" className="mt-2 w-full" disabled={pending}>{pending ? "Salvando..." : "Salvar e entrar"}</Button>
+    </form>
+  );
+}
+
+export function ResendConfirmationForm({ email }: { email: string }) {
+  const [state, action, pending] = useActionState(resendConfirmationAction, initialAuthState);
+  return (
+    <form action={action} className="flex flex-col gap-3.5">
+      {state.message ? <Alert variant={state.status === "success" ? "default" : "destructive"}><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      <FieldBox id="resendEmail" label="E-mail" error={state.errors?.email}><Input id="resendEmail" name="email" type="email" autoComplete="email" defaultValue={email} required className={boxInput} /></FieldBox>
+      <Button type="submit" size="lg" variant="outline" className="mt-1 w-full" disabled={pending}>{pending ? "Enviando..." : "Reenviar e-mail de confirmação"}</Button>
     </form>
   );
 }
