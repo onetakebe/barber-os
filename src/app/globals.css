@@ -171,6 +171,19 @@
   z-index: 0;
 }
 
+/* Cabeçalho das telas de acesso: padrão geométrico (quartos de círculo e
+   quadrados) em branco a baixa opacidade sobre o preto quente. */
+.auth-pattern {
+  background-color: #0f0e0d;
+  background-image:
+    radial-gradient(circle at 0 0, rgb(255 255 255 / 9%) 0 46%, transparent 47%),
+    radial-gradient(circle at 100% 100%, rgb(255 255 255 / 9%) 0 46%, transparent 47%),
+    linear-gradient(rgb(255 255 255 / 4%), rgb(255 255 255 / 4%));
+  background-size: 56px 56px, 56px 56px, 28px 28px;
+  background-position: 0 0, 28px 28px, 14px 14px;
+  background-blend-mode: normal;
+}
+
 .dashboard-workspace {
   background: color-mix(in srgb, #1a1917 66%, transparent);
   border: 1px solid rgb(255 255 255 / 5%);

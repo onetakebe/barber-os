@@ -2,7 +2,6 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 
 import {
   loginAction,
@@ -13,47 +12,42 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const initialAuthState: AuthActionState = { status: "idle" };
 
-function ErrorText({ messages }: { messages?: string[] }) {
-  return messages?.[0] ? <p className="text-xs text-destructive">{messages[0]}</p> : null;
+/* Campo em caixa, como na referência: rótulo pequeno em cima, valor embaixo,
+   tudo dentro de um bloco branco. O Input perde borda e fundo próprios — o
+   `dark:bg-transparent` é necessário porque o `dark:bg-input/30` do shadcn
+   venceria um `bg-transparent` sem variante. */
+function FieldBox({ id, label, error, trailing, children }: { id: string; label: string; error?: string[]; trailing?: React.ReactNode; children: React.ReactNode }) {
+  const message = error?.[0];
+  return (
+    <div className={`rounded-2xl bg-white px-4 pb-3 pt-3 shadow-[0_2px_12px_rgb(0_0_0/.05)] ring-1 ${message ? "ring-destructive/50" : "ring-black/5"} focus-within:ring-black/25`}>
+      <div className="flex items-center justify-between">
+        <label htmlFor={id} className="text-[11px] font-medium text-muted-foreground">{label}</label>
+        {trailing}
+      </div>
+      {children}
+      {message ? <p className="mt-1 text-xs text-destructive">{message}</p> : null}
+    </div>
+  );
 }
 
-export function LoginForm({ email = "owner@asbarber.be", compact = false, label }: { email?: string; compact?: boolean; label?: string }) {
+const boxInput = "h-7 rounded-none border-0 bg-transparent px-0 text-[15px] shadow-none placeholder:text-black/30 focus-visible:ring-0 dark:bg-transparent";
+
+export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, initialAuthState);
-
-  if (compact) {
-    return (
-      <form action={action}>
-        <input type="hidden" name="email" value={email} />
-        <input type="hidden" name="password" value="demo123" />
-        <Button type="submit" variant="outline" size="sm" className="w-full justify-start" disabled={pending}>
-          {label ?? email.split("@")[0]}
-        </Button>
-      </form>
-    );
-  }
-
   return (
-    <form action={action}>
-      <FieldGroup>
-        {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
-        <Field>
-          <FieldLabel htmlFor="email">E-mail</FieldLabel>
-          <Input id="email" name="email" type="email" defaultValue={email} autoComplete="email" required />
-          <ErrorText messages={state.errors?.email} />
-        </Field>
-        <Field>
-          <div className="flex items-center justify-between"><FieldLabel htmlFor="password">Senha</FieldLabel><Link href="/recuperar-senha" className="text-xs text-primary hover:underline">Esqueci a senha</Link></div>
-          <Input id="password" name="password" type="password" defaultValue="demo123" autoComplete="current-password" required />
-          <FieldDescription>Senha das contas seedadas: demo123</FieldDescription>
-          <ErrorText messages={state.errors?.password} />
-        </Field>
-        <Button type="submit" className="w-full" disabled={pending}>{pending ? "Entrando..." : "Entrar no painel"}<ArrowRight data-icon="inline-end" /></Button>
-      </FieldGroup>
+    <form action={action} className="flex flex-col gap-3.5">
+      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      <FieldBox id="email" label="E-mail" error={state.errors?.email}>
+        <Input id="email" name="email" type="email" autoComplete="email" placeholder="voce@barbearia.com" required className={boxInput} />
+      </FieldBox>
+      <FieldBox id="password" label="Senha" error={state.errors?.password} trailing={<Link href="/recuperar-senha" className="text-[11px] text-muted-foreground underline-offset-4 hover:underline">Esqueci a senha</Link>}>
+        <Input id="password" name="password" type="password" autoComplete="current-password" placeholder="••••••••" required className={boxInput} />
+      </FieldBox>
+      <Button type="submit" size="lg" className="mt-2 w-full" disabled={pending}>{pending ? "Entrando..." : "Entrar"}</Button>
     </form>
   );
 }
@@ -61,19 +55,21 @@ export function LoginForm({ email = "owner@asbarber.be", compact = false, label 
 export function SignupForm() {
   const [state, action, pending] = useActionState(signupAction, initialAuthState);
   return (
-    <form action={action}>
-      <FieldGroup>
-        {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field><FieldLabel htmlFor="firstName">Nome</FieldLabel><Input id="firstName" name="firstName" required /><ErrorText messages={state.errors?.firstName} /></Field>
-          <Field><FieldLabel htmlFor="lastName">Sobrenome</FieldLabel><Input id="lastName" name="lastName" required /><ErrorText messages={state.errors?.lastName} /></Field>
-        </div>
-        <Field><FieldLabel htmlFor="businessName">Nome da barbearia</FieldLabel><Input id="businessName" name="businessName" required /><ErrorText messages={state.errors?.businessName} /></Field>
-        <Field><FieldLabel htmlFor="signupEmail">E-mail</FieldLabel><Input id="signupEmail" name="email" type="email" required /><ErrorText messages={state.errors?.email} /></Field>
-        <Field><FieldLabel htmlFor="signupPassword">Senha</FieldLabel><Input id="signupPassword" name="password" type="password" autoComplete="new-password" required /><FieldDescription>Mínimo de 8 caracteres, com letra e número.</FieldDescription><ErrorText messages={state.errors?.password} /></Field>
-        <Field orientation="horizontal"><Checkbox id="terms" name="terms" required /><div><FieldLabel htmlFor="terms" className="font-normal">Aceito os termos e a política de privacidade.</FieldLabel><ErrorText messages={state.errors?.terms} /></div></Field>
-        <Button type="submit" disabled={pending}>{pending ? "Criando..." : "Criar ambiente"}</Button>
-      </FieldGroup>
+    <form action={action} className="flex flex-col gap-3.5">
+      {state.message ? <Alert variant="destructive"><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <FieldBox id="firstName" label="Nome" error={state.errors?.firstName}><Input id="firstName" name="firstName" autoComplete="given-name" required className={boxInput} /></FieldBox>
+        <FieldBox id="lastName" label="Sobrenome" error={state.errors?.lastName}><Input id="lastName" name="lastName" autoComplete="family-name" required className={boxInput} /></FieldBox>
+      </div>
+      <FieldBox id="businessName" label="Nome da barbearia" error={state.errors?.businessName}><Input id="businessName" name="businessName" autoComplete="organization" required className={boxInput} /></FieldBox>
+      <FieldBox id="signupEmail" label="E-mail" error={state.errors?.email}><Input id="signupEmail" name="email" type="email" autoComplete="email" required className={boxInput} /></FieldBox>
+      <FieldBox id="signupPassword" label="Senha" error={state.errors?.password}><Input id="signupPassword" name="password" type="password" autoComplete="new-password" placeholder="Mín. 8 caracteres, letra e número" required className={boxInput} /></FieldBox>
+      <FieldBox id="confirmPassword" label="Confirmar senha" error={state.errors?.confirmPassword}><Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" required className={boxInput} /></FieldBox>
+      <label htmlFor="terms" className="flex items-start gap-3 px-1 text-xs text-muted-foreground">
+        <Checkbox id="terms" name="terms" required className="mt-0.5" />
+        <span>Aceito os termos e a política de privacidade.{state.errors?.terms?.[0] ? <span className="block text-destructive">{state.errors.terms[0]}</span> : null}</span>
+      </label>
+      <Button type="submit" size="lg" className="mt-1 w-full" disabled={pending}>{pending ? "Criando..." : "Criar conta"}</Button>
     </form>
   );
 }
@@ -81,12 +77,10 @@ export function SignupForm() {
 export function RecoverForm() {
   const [state, action, pending] = useActionState(recoverAction, initialAuthState);
   return (
-    <form action={action}>
-      <FieldGroup>
-        {state.message ? <Alert><AlertDescription>{state.message}</AlertDescription></Alert> : null}
-        <Field><FieldLabel htmlFor="recoverEmail">E-mail</FieldLabel><Input id="recoverEmail" name="email" type="email" placeholder="voce@barbearia.com" required /><ErrorText messages={state.errors?.email} /></Field>
-        <Button type="submit" disabled={pending}>{pending ? "Enviando..." : "Enviar link simulado"}</Button>
-      </FieldGroup>
+    <form action={action} className="flex flex-col gap-3.5">
+      {state.message ? <Alert><AlertDescription>{state.message}</AlertDescription></Alert> : null}
+      <FieldBox id="recoverEmail" label="E-mail" error={state.errors?.email}><Input id="recoverEmail" name="email" type="email" autoComplete="email" placeholder="voce@barbearia.com" required className={boxInput} /></FieldBox>
+      <Button type="submit" size="lg" className="mt-2 w-full" disabled={pending}>{pending ? "Enviando..." : "Enviar link"}</Button>
     </form>
   );
 }

@@ -30,8 +30,9 @@ const signupSchema = z.object({
     .min(8, "Use pelo menos 8 caracteres.")
     .regex(/[A-Za-z]/, "Inclua uma letra.")
     .regex(/[0-9]/, "Inclua um número."),
+  confirmPassword: z.string(),
   terms: z.literal("on", { error: "Aceite os termos para continuar." }),
-});
+}).refine((data) => data.password === data.confirmPassword, { path: ["confirmPassword"], message: "As senhas não coincidem." });
 
 const recoverSchema = z.object({ email: z.email().trim().toLowerCase() });
 

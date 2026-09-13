@@ -1,6 +1,15 @@
+import Link from "next/link";
+
 import { SignupForm } from "@/components/auth/auth-forms";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 
 export default function SignupPage() {
-  return <Card className="w-full max-w-lg"><CardHeader><CardTitle className="font-heading text-2xl">Crie seu ambiente</CardTitle><CardDescription>Comece com os dados essenciais. Você poderá completar tudo depois.</CardDescription></CardHeader><CardContent><SignupForm /></CardContent></Card>;
+  return (
+    <AuthShell title="Criar conta" back={{ href: "/login", label: "Voltar para entrar" }}>
+      <SignupForm />
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        Já tem conta? <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">Entrar</Link>
+      </p>
+    </AuthShell>
+  );
 }
