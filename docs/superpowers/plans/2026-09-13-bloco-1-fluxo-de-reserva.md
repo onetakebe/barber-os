@@ -107,20 +107,30 @@ introduzidos aqui.
 
 Passos: **1 Serviço e profissional** · **2 Dia e horário** · **3 Seus dados e confirmação**.
 
-- [ ] `src/components/booking/booking-wizard.tsx`: `steps` vira 3; passo 1 junta a lista de
+- [x] `src/components/booking/booking-wizard.tsx`: `steps` vira 3; passo 1 junta a lista de
       serviços e a escolha de profissional (profissional filtra pelo serviço, como hoje;
       "Qualquer profissional" continua padrão); passo 2 = calendário de mês (T2) + horários;
       passo 3 = dados + política de cancelamento + botão **"Confirmar reserva"** (sem cartão,
       sem "Pagar"). `Progress` e "Passo X de 3" acompanham.
-- [ ] Validação por passo igual à atual (não avança sem serviço/horário/dados), `state.message`
+- [x] Validação por passo igual à atual (não avança sem serviço/horário/dados), `state.message`
       de erro aparece no passo 3.
-- [ ] Deep-link `?servico=&profissional=` continua funcionando e cai no passo 1 já preenchido.
-- [ ] `tests/e2e/main.spec.ts`: fluxo de reserva com 2 cliques em "Continuar" e 1 em
+- [x] Deep-link `?servico=&profissional=` continua funcionando e cai no passo 1 já preenchido.
+- [x] `tests/e2e/main.spec.ts`: fluxo de reserva com 2 cliques em "Continuar" e 1 em
       "Confirmar reserva"; conferir texto de confirmação e que o agendamento aparece na agenda
       do painel (já existe verificação parecida no teste atual).
 
 **Pronto quando:** reserva completa em 3 passos no navegador, desktop e 375px, sem erro de
 console; `tsc`, eslint dos arquivos tocados, vitest e e2e verdes.
+
+**Feito em 13/09:** `steps` = ["Serviço e profissional", "Dia e horário", "Seus dados"]; passo 3
+traz o resumo (serviço, profissional, dia/hora, total, política) acima dos campos e o botão
+"Confirmar reserva" só habilita com dados + política; `aria-pressed` nos cartões de serviço e
+profissional; `autoComplete` nos campos. Verificado: tsc, eslint, vitest 51/51, reserva real no
+navegador com profissional escolhido (Lucas Moreira, 14/09 10:30 → `2026-09-14T08:30Z` no
+banco, sem depósito; apagada depois), deep-link inválido cai em "Qualquer", 375px sem scroll
+horizontal, sem erro novo de console. **E2E não rodado**: o `webServer` do Playwright executa
+`npm run db:seed` antes, e hoje isso reescreve os dados demo no Supabase — decidir com o
+usuário antes de rodar.
 
 ---
 

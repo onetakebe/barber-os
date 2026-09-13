@@ -35,16 +35,17 @@ test("owner signs in and sees the live dashboard", async ({ page }) => {
 
 test("customer completes a persisted booking without an online deposit", async ({ page }) => {
   await page.goto("/barbearia/as-barber-club/agendar");
+  await expect(page.getByText("Passo 1 de 3")).toBeVisible();
   await page.getByRole("button", { name: /Continuar/ }).click();
+  await expect(page.getByText(/Horários disponíveis/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Próximo mês" })).toBeVisible();
+  await expect(page.locator("button.font-mono[data-state]").first()).toBeVisible();
   await page.getByRole("button", { name: /Continuar/ }).click();
-  await expect(page.getByText("Horários disponíveis")).toBeVisible();
-  await expect(page.locator("button.font-mono").first()).toBeVisible();
-  await page.getByRole("button", { name: /Continuar/ }).click();
+  await expect(page.getByText("Passo 3 de 3")).toBeVisible();
   await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Cliente");
   await page.getByLabel("Sobrenome").fill("Playwright");
   await page.getByLabel("E-mail").fill("playwright@example.com");
   await page.getByLabel("Telefone").fill("+32 470 99 88 77");
-  await page.getByRole("button", { name: /Continuar/ }).click();
   await page.getByRole("button", { name: /Confirmar reserva/ }).click();
   await expect(page.getByRole("heading", { name: "Sua cadeira está reservada." })).toBeVisible();
   await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
