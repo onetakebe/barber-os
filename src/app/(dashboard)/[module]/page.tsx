@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { ModuleAction } from "@/components/dashboard/module-action";
+import { TeamAccess } from "@/components/dashboard/team-access";
+import { listTeamAccess } from "@/server/services/invitations";
 import { ModuleTable } from "@/components/dashboard/module-table";
 import { authorize, type Permission } from "@/domain/auth/permissions";
 import { requirePermission } from "@/server/auth/authorization";
@@ -49,6 +51,14 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
       </section>
 
       <ModuleTable module={slug} columns={definition.columns} rows={definition.rows} canMutate={canMutate} />
+      {slug === "equipe" ? <TeamAccessSection tenantId={session.tenantId} canInvite={authorize(session.role, "team:invite")} /> : null}
     </div>
   );
+}
+
+async function TeamAccessSection({ tenantId, canInvite }: { tenantId: string; canInvite: boolean }) {
+  const access = await listTeamAccess(tenantId);
+  // Profissionais da agenda ainda sem login, para vincular ao convite.
+  const staff = canInvite ? await db.staff.findMany({ where: { tenantId, deletedAt: null, userId: null }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }) : [];
+  return <TeamAccess data={{ ...access, staffOptions: staff.map((item) => ({ id: item.id, name: item.displayName })) }} canInvite={canInvite} />;
 }

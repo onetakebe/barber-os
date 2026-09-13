@@ -17,6 +17,7 @@ export type Permission =
   | "waitlist:edit"
   | "campaigns:create"
   | "team:edit"
+  | "team:invite"
   | "commissions:view"
   | "settings:edit";
 
@@ -38,6 +39,7 @@ const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
     "waitlist:edit",
     "campaigns:create",
     "team:edit",
+    "team:invite",
     "commissions:view",
     "settings:edit",
   ]),
@@ -58,6 +60,7 @@ const rolePermissions: Record<Role, ReadonlySet<Permission>> = {
     "waitlist:edit",
     "campaigns:create",
     "team:edit",
+    "team:invite",
     "commissions:view",
     "settings:edit",
   ]),

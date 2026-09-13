@@ -3,6 +3,7 @@ import { cache } from "react";
 import { canLinkByEmail, identityFromMemberships, type AuthenticatedIdentity } from "@/server/auth/identity";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 import { db } from "@/server/db";
+import { acceptPendingInvitations } from "@/server/services/invitations";
 
 export type AppSession = AuthenticatedIdentity;
 export type DemoSession = AppSession;
@@ -29,7 +30,12 @@ export const getSession = cache(async (): Promise<AppSession | null> => {
       profile = await db.user.update({ where: { id: byEmail.id }, data: { authUserId: authUser.id }, select: { id: true, email: true, firstName: true, lastName: true, memberships: membershipSelect } });
     }
   }
-  return identityFromMemberships(profile);
+  let identity = identityFromMemberships(profile);
+  if (!identity && (await acceptPendingInvitations(authUser))) {
+    profile = await db.user.findUnique({ where: { authUserId: authUser.id }, select: { id: true, email: true, firstName: true, lastName: true, memberships: membershipSelect } });
+    identity = identityFromMemberships(profile);
+  }
+  return identity;
 });
 
 /** O usuário do Supabase, mesmo sem perfil no app ainda (cadastro por Google a completar). */
