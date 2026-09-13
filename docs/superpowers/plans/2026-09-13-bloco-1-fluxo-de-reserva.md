@@ -128,9 +128,13 @@ traz o resumo (serviço, profissional, dia/hora, total, política) acima dos cam
 profissional; `autoComplete` nos campos. Verificado: tsc, eslint, vitest 51/51, reserva real no
 navegador com profissional escolhido (Lucas Moreira, 14/09 10:30 → `2026-09-14T08:30Z` no
 banco, sem depósito; apagada depois), deep-link inválido cai em "Qualquer", 375px sem scroll
-horizontal, sem erro novo de console. **E2E não rodado**: o `webServer` do Playwright executa
-`npm run db:seed` antes, e hoje isso reescreve os dados demo no Supabase — decidir com o
-usuário antes de rodar.
+horizontal, sem erro novo de console. **E2E rodado depois (decisão do usuário: opção a)**: `playwright.config.ts` aponta o
+servidor de teste para `LOCAL_DATABASE_URL`/`LOCAL_DIRECT_URL` (o reseed fica no Postgres
+local; autenticação segue no Supabase Auth com as contas demo), `workers: 2` e `expect` de
+15 s (servidor de dev compila na primeira visita). O helper de login do E2E, que ainda clicava
+nos botões de acesso rápido removidos na etapa 2 do Supabase, passou a preencher e-mail e senha;
+dois testes que afirmavam textos do layout antigo ("Corte. Presença. Ritual.", "Impacto
+registrado") passaram a afirmar os atuais. **8/8 verdes**, incluindo a reserva em 3 passos.
 
 ---
 

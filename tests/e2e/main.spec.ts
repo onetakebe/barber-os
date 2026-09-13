@@ -2,24 +2,30 @@ import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
 
-async function signInQuick(page: Page, account: "Proprietário" | "Recepção" | "Profissional") {
+// Contas demo do seed, também presentes no Supabase Auth com a senha do seed (script de migração).
+const accounts = { Proprietário: "owner@asbarber.be", Recepção: "recepcao@asbarber.be", Profissional: "lucas@asbarber.be" } as const;
+
+async function signInQuick(page: Page, account: keyof typeof accounts) {
   await page.goto("/login");
-  await page.getByRole("button", { name: account }).click();
+  await page.getByLabel("E-mail").fill(accounts[account]);
+  await page.getByLabel("Senha").fill("demo123");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/painel$/);
 }
 
 test("public barbershop presents the commercial experience without horizontal overflow", async ({ page }) => {
   await mkdir("artifacts", { recursive: true });
   await page.goto("/barbearia/as-barber-club");
-  await expect(page.getByRole("heading", { name: /Corte\. Presença\. Ritual\./ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Seu estilo, bem cuidado\./ })).toBeVisible();
+  // Copy do redesign de setembro (Grafite Acolhedor).
+  await expect(page.getByRole("heading", { name: /Bom corte\.\s*Boa conversa\./ }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Encontre seu ritual\./ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Agendar/ }).first()).toHaveAttribute("href", "/barbearia/as-barber-club/agendar");
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", await page.locator("html").evaluate((element) => element.clientWidth));
   await page.screenshot({ path: "artifacts/barbershop-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole("heading", { name: /Corte\. Presença\. Ritual\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Bom corte\.\s*Boa conversa\./ }).first()).toBeVisible();
   const viewportWidth = await page.locator("html").evaluate((element) => element.clientWidth);
   const documentWidth = await page.locator("html").evaluate((element) => element.scrollWidth);
   expect(documentWidth).toBe(viewportWidth);
@@ -29,8 +35,8 @@ test("public barbershop presents the commercial experience without horizontal ov
 test("owner signs in and sees the live dashboard", async ({ page }) => {
   await signInQuick(page, "Proprietário");
   await expect(page.getByRole("heading", { name: /Olá, Alexandre/ })).toBeVisible();
-  await expect(page.getByText("Impacto registrado")).toBeVisible();
-  await expect(page.getByText("Dados do tenant em tempo real")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agenda de hoje" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Próximos horários" })).toBeVisible();
 });
 
 test("customer completes a persisted booking without an online deposit", async ({ page }) => {
