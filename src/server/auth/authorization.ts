@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { authorize, type Permission } from "@/domain/auth/permissions";
-import { getSession, type AppSession } from "@/server/auth/session";
+import { getAuthUser, getSession, type AppSession } from "@/server/auth/session";
 
 export class AuthorizationError extends Error {
   constructor(public readonly code: "UNAUTHENTICATED" | "FORBIDDEN") {
@@ -11,7 +11,13 @@ export class AuthorizationError extends Error {
 
 export async function requireSession(): Promise<AppSession> {
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) {
+    // Logado no Supabase mas sem barbearia ou sem e-mail confirmado → tela certa, não /login em loop.
+    const authUser = await getAuthUser();
+    if (authUser && !authUser.email_confirmed_at) redirect("/confirmar-email");
+    if (authUser) redirect("/cadastro?completar=1");
+    redirect("/login");
+  }
   return session;
 }
 

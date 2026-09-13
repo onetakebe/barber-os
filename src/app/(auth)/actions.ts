@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { mapSignInError } from "@/server/auth/identity";
-import { getAuthUser } from "@/server/auth/session";
+import { getAuthUser, getSession } from "@/server/auth/session";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 import { db } from "@/server/db";
 
@@ -71,7 +71,9 @@ export async function loginAction(
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { status: "error", message: mapSignInError(error) };
-  redirect("/painel");
+  // Conta existe no Supabase mas sem barbearia no app (cadastro interrompido): completar, não dar loop.
+  const session = await getSession();
+  redirect(session ? "/painel" : "/cadastro?completar=1");
 }
 
 export async function signInWithGoogleAction() {
@@ -116,7 +118,7 @@ export async function signupAction(
 ): Promise<AuthActionState> {
   if (formData.get("social") === "1") {
     const authUser = await getAuthUser();
-    if (!authUser?.email) return { status: "error", message: "O login com Google expirou. Entre de novo." };
+    if (!authUser?.email) return { status: "error", message: "A sessão expirou. Entre de novo para completar o cadastro." };
     const parsed = socialSignupSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
     const existing = await db.membership.findFirst({ where: { user: { email: authUser.email.toLowerCase() }, isActive: true }, select: { id: true } });
@@ -149,7 +151,8 @@ export async function signupAction(
     },
   });
   if (error) return { status: "error", message: error.code === "user_already_exists" ? "Já existe uma conta com este e-mail." : "Não foi possível criar a conta agora. Tente de novo." };
-  if (!data.user) return { status: "error", message: "Não foi possível criar a conta agora. Tente de novo." };
+  // Com confirmação de e-mail ligada, e-mail repetido volta como "sucesso" com identities vazio.
+  if (!data.user || data.user.identities?.length === 0) return { status: "error", message: "Já existe uma conta com este e-mail. Use \"Esqueci a senha\" se precisar recuperar o acesso." };
 
   await createOwnerWorkspace({
     authUserId: data.user.id,
@@ -178,4 +181,43 @@ export async function recoverAction(
   await supabase.auth.resetPasswordForEmail(parsed.data.email, { redirectTo: `${appUrl()}/auth/callback?next=/redefinir-senha` });
   // Resposta igual exista ou não a conta — não revelar e-mails cadastrados.
   return { status: "success", message: "Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha." };
+}
+
+const passwordSchema = z.object({
+  password: z
+    .string()
+    .min(8, "Use pelo menos 8 caracteres.")
+    .regex(/[A-Za-z]/, "Inclua uma letra.")
+    .regex(/[0-9]/, "Inclua um número."),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, { path: ["confirmPassword"], message: "As senhas não coincidem." });
+
+/** Tela /redefinir-senha: a sessão veio do link do e-mail (callback trocou o code). */
+export async function updatePasswordAction(
+  _previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const parsed = passwordSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) {
+    if (error.code === "same_password") return { status: "error", errors: { password: ["Escolha uma senha diferente da atual."] } };
+    return { status: "error", message: "O link expirou ou já foi usado. Peça um novo em \"Esqueci a senha\"." };
+  }
+  const session = await getSession();
+  redirect(session ? "/painel" : "/cadastro?completar=1");
+}
+
+export async function resendConfirmationAction(
+  _previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const parsed = recoverSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { status: "error", errors: fieldErrors(parsed.error) };
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.resend({ type: "signup", email: parsed.data.email, options: { emailRedirectTo: `${appUrl()}/auth/callback?next=/configuracoes` } });
+  if (error?.code === "over_email_send_rate_limit") return { status: "error", message: "Já enviamos um e-mail há pouco. Aguarde um minuto antes de pedir outro." };
+  return { status: "success", message: "Se a conta existir e ainda não estiver confirmada, um novo e-mail foi enviado." };
 }

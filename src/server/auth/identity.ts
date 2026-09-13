@@ -62,3 +62,15 @@ export function mapSignInError(error: SupabaseAuthError): string {
       return "Não foi possível entrar agora. Tente de novo.";
   }
 }
+
+/** `next` do callback: só caminho interno (nada de `//host`, `/\\host` ou esquema). */
+export function safeNextPath(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/")) return null;
+  if (next.startsWith("//") || next.startsWith("/\\")) return null;
+  return next;
+}
+
+/** Ligar um auth.user a um perfil já existente só é seguro com e-mail verificado pelo provedor. */
+export function canLinkByEmail(authUser: { email_confirmed_at?: string | null }): boolean {
+  return Boolean(authUser.email_confirmed_at);
+}

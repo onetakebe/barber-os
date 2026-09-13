@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { safeNextPath } from "@/server/auth/identity";
 import { getSession } from "@/server/auth/session";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) return to("/login?erro=provedor");
 
-  if (next?.startsWith("/")) return to(next);
+  const safeNext = safeNextPath(next);
+  if (safeNext) return to(safeNext);
   const session = await getSession();
-  return to(session ? "/painel" : "/cadastro?via=google");
+  return to(session ? "/painel" : "/cadastro?completar=1");
 }

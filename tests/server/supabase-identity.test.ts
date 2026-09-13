@@ -49,3 +49,29 @@ describe("mapSignInError", () => {
     expect(mapSignInError({ message: "boom" })).toBe("Não foi possível entrar agora. Tente de novo.");
   });
 });
+
+describe("safeNextPath", () => {
+  it("aceita só caminhos internos", async () => {
+    const { safeNextPath } = await import("@/server/auth/identity");
+    expect(safeNextPath("/redefinir-senha")).toBe("/redefinir-senha");
+    expect(safeNextPath("/configuracoes?tab=equipe")).toBe("/configuracoes?tab=equipe");
+  });
+  it("recusa redirecionamento para fora, ausência e esquemas", async () => {
+    const { safeNextPath } = await import("@/server/auth/identity");
+    expect(safeNextPath("//evil.com")).toBeNull();
+    expect(safeNextPath("/\\evil.com")).toBeNull();
+    expect(safeNextPath("https://evil.com")).toBeNull();
+    expect(safeNextPath("javascript:alert(1)")).toBeNull();
+    expect(safeNextPath(null)).toBeNull();
+    expect(safeNextPath("")).toBeNull();
+  });
+});
+
+describe("canLinkByEmail", () => {
+  it("só liga perfil existente quando o provedor confirmou o e-mail", async () => {
+    const { canLinkByEmail } = await import("@/server/auth/identity");
+    expect(canLinkByEmail({ email_confirmed_at: "2026-09-13T10:00:00Z" })).toBe(true);
+    expect(canLinkByEmail({ email_confirmed_at: null })).toBe(false);
+    expect(canLinkByEmail({})).toBe(false);
+  });
+});
