@@ -303,6 +303,24 @@
     z-index: 2;
   }
 
+  /* Hero com vídeo que rola junto com a página (ver components/scrub-hero.tsx).
+     `--scrub` (0–1) e `data-stage` (start | mid | end) vêm do JS. Os frames nítidos
+     cobrem o vídeo nas extremidades; no meio ficam transparentes e o vídeo aparece. */
+  .scrub-hero__frame {
+    opacity: 0;
+    transition: opacity 240ms ease-out;
+    z-index: 1;
+  }
+  .scrub-hero[data-stage="start"] .scrub-hero__frame--start,
+  .scrub-hero[data-stage="end"] .scrub-hero__frame--end {
+    opacity: 1;
+  }
+  .scrub-hero__progress {
+    height: 100%;
+    transform: scaleY(var(--scrub, 0));
+    transform-origin: top;
+  }
+
   /* Profundidade sem sombra solta: luz de topo por dentro + assentamento suave.
      Mantém a regra do Grafite de separar por hairline, não por sombra. */
   .panel-glow {

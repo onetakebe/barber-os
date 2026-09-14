@@ -15,6 +15,7 @@ import {
   Star,
 } from "lucide-react";
 
+import { ScrubHero } from "@/components/scrub-hero";
 import { StaffPhoto } from "@/components/staff-photo";
 import { getBookingWindow, getNextPublicSlot, getPublicBookingCatalog } from "@/server/data/public-booking";
 import { addDays } from "@/server/services/availability";
@@ -46,7 +47,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
   const rating = business.reviews.length ? business.reviews.reduce((sum, review) => sum + review.rating, 0) / business.reviews.length : null;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-surface-base text-white">
+    <main className="min-h-screen overflow-x-clip bg-surface-base text-white">
       <div className="border-b border-white/10 bg-surface-base px-5 py-2.5 text-[10px] uppercase tracking-[.22em] text-white/65 lg:px-10">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4">
           <p>{business.address ?? "Endereço a configurar"} · {business.city ?? ""}</p>
@@ -83,20 +84,22 @@ export default async function BusinessPage({ params }: { params: Promise<{ slug:
         </div>
       </header>
 
-      <section className="mx-auto max-w-[1500px] px-5 pb-12 pt-6 lg:px-10 lg:pb-16">
-        <div className="relative grid overflow-hidden bg-surface-panel lg:grid-cols-[.9fr_1.1fr]">
-          <div className="relative z-10 flex flex-col justify-center px-6 py-12 sm:px-10 sm:py-16 lg:min-h-[560px] lg:px-12">
-            <p className="mb-8 flex items-center gap-2 text-[10px] uppercase tracking-[.2em] text-white/70"><span className="h-px w-8 bg-white/50" /> {business.city ?? "Seu clube"} · Barbearia</p>
-            <h1 className="font-display text-[clamp(2.4rem,5.4vw,5.25rem)] uppercase leading-[.95] tracking-[-.055em]">Bom corte.<br />Boa conversa.</h1>
-            <p className="mt-6 text-base text-white/80">Seu tempo. Seu estilo. Sua cadeira.</p>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-white/65">{business.description ?? "Técnica, cuidado e um horário reservado para você."}</p>
-            <Link href={bookingHref} className="mt-8 inline-flex min-h-12 w-fit items-center gap-5 rounded-lg bg-surface-invert px-6 text-sm font-medium text-black transition-colors hover:bg-surface-invert-muted">Escolher meu horário <ArrowRight className="size-4" /></Link>
-          </div>
-          <div className="image-grain relative min-h-[360px] sm:min-h-[440px] lg:min-h-[560px]">
-            <Image src="/images/barber-welcome.webp" alt="Barbeiro e cliente compartilhando uma conversa durante o corte — imagem ilustrativa" fill loading="eager" fetchPriority="high" sizes="(max-width: 1024px) 100vw, 55vw" className="object-cover object-[65%_center]" />
-            <span className="absolute bottom-5 right-5 z-[3] rounded-full bg-black/60 px-3 py-1.5 text-[10px] text-white/85">Imagem ilustrativa</span>
-          </div>
-        </div>
+      <ScrubHero
+        frameCount={72}
+        frameDir="/video/hero-frames"
+        frameStart="/images/hero-frame-start.jpg"
+        frameEnd="/images/hero-frame-end.jpg"
+        alt="Cliente na cadeira do estúdio, do cabelo comprido ao corte finalizado — imagem ilustrativa"
+      >
+        <p className="mb-8 flex items-center gap-2 text-[10px] uppercase tracking-[.2em] text-white/70"><span className="h-px w-8 bg-white/50" /> {business.city ?? "Seu clube"} · Barbearia</p>
+        <h1 className="font-display text-[clamp(2.4rem,5.4vw,5.25rem)] uppercase leading-[.95] tracking-[-.055em]">Bom corte.<br />Boa conversa.</h1>
+        <p className="mt-6 text-base text-white/80">Seu tempo. Seu estilo. Sua cadeira.</p>
+        <p className="mt-3 max-w-sm text-sm leading-6 text-white/65">{business.description ?? "Técnica, cuidado e um horário reservado para você."}</p>
+        <Link href={bookingHref} className="mt-8 inline-flex min-h-12 w-fit items-center gap-5 rounded-lg bg-surface-invert px-6 text-sm font-medium text-black transition-colors hover:bg-surface-invert-muted">Escolher meu horário <ArrowRight className="size-4" /></Link>
+        <span className="absolute bottom-5 right-5 rounded-full bg-black/60 px-3 py-1.5 text-[10px] text-white/85 lg:right-16">Imagem ilustrativa</span>
+      </ScrubHero>
+
+      <section className="mx-auto max-w-[1500px] px-5 lg:px-10">
         <div className="grid gap-5 border-b border-white/12 px-1 py-6 sm:grid-cols-3 sm:gap-8">
           <div className="flex items-center gap-3"><Star className="size-4" /><div><p className="text-sm">{rating ? `${rating.toFixed(1)} / 5` : "Novas avaliações"}</p><p className="mt-1 text-xs text-white/65">{business.reviews.length} avaliações públicas</p></div></div>
           <div className="flex items-center gap-3"><Clock3 className="size-4" /><div><p className="text-sm">{nextSlot ? `Próximo horário: ${nextSlot}` : "Consulte a agenda"}</p><p className="mt-1 text-xs text-white/65">Escolha o melhor momento para você</p></div></div>
