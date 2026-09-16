@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { adminDb, tenantDb, tenantTransaction } from "@/server/db";
-import { getPublicAvailability } from "@/server/data/public-booking";
+import { getAvailabilityForTenant, getBookingWindow } from "@/server/data/public-booking";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
+import { resolveBookingServices } from "@/server/services/booking-services";
 
 export type CreatePublicBookingInput = {
   slug: string;
-  serviceId: string;
+  serviceIds: string[];
   staffId: string;
   date: string;
   time: string;
@@ -16,17 +17,26 @@ export type CreatePublicBookingInput = {
   phone: string;
 };
 
+/**
+ * Reserva pública: um agendamento com um item `AppointmentService` por serviço escolhido, todos
+ * com o mesmo barbeiro em sequência. Seleção, janela e horário são revalidados aqui — o wizard
+ * só esconde o que não pode; quem forjar o formulário esbarra nas mesmas regras. O conflito de
+ * horário é barrado pela exclusion constraint do banco, não por consulta prévia, então
+ * sobrevive a duas reservas simultâneas.
+ */
 export async function createPublicBooking(input: CreatePublicBookingInput) {
-  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, cancellationNoticeHours: true } });
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true, currency: true, cancellationNoticeHours: true } });
   if (!tenant) throw new BookingError("RESOURCE_NOT_FOUND");
-  const db = tenantDb(tenant.id);
-  const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: tenant.id, isActive: true, deletedAt: null }, select: { id: true, name: true, priceCents: true, durationMinutes: true } });
-  if (!service) throw new BookingError("RESOURCE_NOT_FOUND");
+  // Janela pública (hoje–hoje+60) também vale no servidor; o calendário só a esconde.
+  const window = getBookingWindow(tenant.timezone);
+  if (input.date < window.today || input.date > window.last) throw new BookingError("OUTSIDE_WINDOW");
 
-  const availability = await getPublicAvailability({ slug: input.slug, date: input.date, serviceId: service.id, staffId: input.staffId });
-  if (!availability) throw new BookingError("RESOURCE_NOT_FOUND");
+  const db = tenantDb(tenant.id);
+  const services = await resolveBookingServices(db, tenant.id, input.serviceIds);
+  const availability = await getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceIds: input.serviceIds, staffId: input.staffId, now: new Date() });
   const selected = selectBookingSlot(availability.slots, input.time, input.staffId);
   const appointmentId = randomUUID();
+  const serviceNames = services.items.map((item) => item.name).join(" + ");
   // Sem adquirente real não há sinal online (decisão de 13/09): a reserva confirma sem cobrar.
   // `Service.depositRequired` e `Tenant.defaultDepositCents` seguem no cadastro para quando houver.
 
@@ -47,15 +57,25 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
           endsAt: new Date(selected.endsAt),
           status: "CONFIRMED",
           source: "ONLINE",
-          totalCents: service.priceCents,
+          totalCents: services.totalCents,
           depositCents: 0,
-          services: { create: { tenantId: tenant.id, serviceId: service.id, priceCents: service.priceCents, durationMinutes: service.durationMinutes } },
+          services: { create: services.items.map((item) => ({ tenantId: tenant.id, serviceId: item.id, priceCents: item.priceCents, durationMinutes: item.durationMinutes })) },
           statusHistory: { create: { tenantId: tenant.id, toStatus: "CONFIRMED", reason: "Reserva pública confirmada" } },
         },
-        select: { id: true, startsAt: true, staff: { select: { displayName: true } } },
+        select: { id: true, startsAt: true, endsAt: true, staff: { select: { displayName: true } } },
       });
-      await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "SENT", title: "Reserva confirmada", body: `${service.name} confirmado para ${input.date} às ${input.time}. Envio simulado.`, metadata: { simulated: true }, sentAt: new Date() } });
-      return { appointmentId: appointment.id, serviceName: service.name, staffName: appointment.staff.displayName, startsAt: appointment.startsAt, totalCents: service.priceCents, cancellationNoticeHours: tenant.cancellationNoticeHours };
+      await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "SENT", title: "Reserva confirmada", body: `${serviceNames} confirmado para ${input.date} às ${input.time}. Envio simulado.`, metadata: { simulated: true }, sentAt: new Date() } });
+      return {
+        appointmentId: appointment.id,
+        services: services.items,
+        staffName: appointment.staff.displayName,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        durationMinutes: services.durationMinutes,
+        currency: tenant.currency,
+        totalCents: services.totalCents,
+        cancellationNoticeHours: tenant.cancellationNoticeHours,
+      };
     });
   } catch (error) {
     const details = error instanceof Error ? `${error.name} ${error.message}` : String(error);

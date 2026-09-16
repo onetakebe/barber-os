@@ -19,11 +19,12 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 type BookingCatalog = {
-  business: { name: string; slug: string; timezone: string; defaultDepositCents: number; cancellationNoticeHours: number };
+  business: { name: string; slug: string; timezone: string; currency: string; defaultDepositCents: number; cancellationNoticeHours: number };
   services: { id: string; name: string; description: string | null; priceCents: number; durationMinutes: number; depositRequired: boolean; isCombo: boolean }[];
   staff: { id: string; displayName: string; title: string | null; imageUrl: string | null; rating: number | null; reviewCount: number; serviceIds: string[] }[];
   /** Janela da reserva no fuso da barbearia: hoje e o último dia marcável. */
   window: { today: string; last: string };
+  /** Entrada `?servico=id` da página pública: pré-seleciona um serviço. */
   initialServiceId?: string;
   initialStaffId?: string;
 };
@@ -32,7 +33,8 @@ type Slot = { time: string; startsAt: string; endsAt: string; staffIds: string[]
 const steps = ["Serviço e profissional", "Dia e horário", "Seus dados"];
 const dayLabel = (date: string) => date ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00.000Z`)).replace(".", "") : "";
 const initialState: BookingActionState = { status: "idle" };
-const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR" }).format(cents / 100);
+const money = (cents: number, currency: string) => new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(cents / 100);
+const dateTimeLabel = (iso: string, timezone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: timezone, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)).replace(".", "");
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("");
@@ -48,10 +50,23 @@ function serviceIcon(service: { name: string; isCombo: boolean }): LucideIcon {
   return Scissors;
 }
 
+/** Um barbeiro só faz a reserva inteira: precisa estar habilitado em todos os serviços escolhidos. */
+function doesAll(member: { serviceIds: string[] }, serviceIds: string[]) {
+  return serviceIds.every((id) => member.serviceIds.includes(id));
+}
+
+/** `?servico=` pré-seleciona um serviço; sem ele a seleção começa vazia. O profissional da URL
+ *  só vale se fizer esse serviço. */
+function initialSelection(catalog: BookingCatalog) {
+  const serviceIds = catalog.services.some((item) => item.id === catalog.initialServiceId) ? [catalog.initialServiceId!] : [];
+  const staff = catalog.staff.find((item) => item.id === catalog.initialStaffId);
+  return { serviceIds, staffId: staff && doesAll(staff, serviceIds) ? staff.id : "any" };
+}
+
 export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [step, setStep] = useState(0);
-  const [serviceId, setServiceId] = useState(catalog.services.some((item) => item.id === catalog.initialServiceId) ? catalog.initialServiceId! : catalog.services[0]?.id ?? "");
-  const [staffId, setStaffId] = useState(catalog.staff.some((item) => item.id === catalog.initialStaffId) ? catalog.initialStaffId! : "any");
+  const [serviceIds, setServiceIds] = useState(() => initialSelection(catalog).serviceIds);
+  const [staffId, setStaffId] = useState(() => initialSelection(catalog).staffId);
   const [month, setMonth] = useState(catalog.window.today.slice(0, 7));
   const [days, setDays] = useState<CalendarDay[]>([]);
   const [monthError, setMonthError] = useState<string>();
@@ -67,12 +82,33 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [isLoadingSlots, startLoadingSlots] = useTransition();
   const [isLoadingMonth, startLoadingMonth] = useTransition();
   const [state, action, pending] = useActionState(createPublicBookingAction, initialState);
-  const service = useMemo(() => catalog.services.find((item) => item.id === serviceId) ?? catalog.services[0], [catalog.services, serviceId]);
+  // Itens na ordem do catálogo, independente da ordem em que foram marcados.
+  const selectedServices = useMemo(() => catalog.services.filter((item) => serviceIds.includes(item.id)), [catalog.services, serviceIds]);
+  const totalMinutes = selectedServices.reduce((sum, item) => sum + item.durationMinutes, 0);
+  const totalCents = selectedServices.reduce((sum, item) => sum + item.priceCents, 0);
+  const serviceNames = selectedServices.map((item) => item.name).join(" + ");
+  const price = (cents: number) => money(cents, catalog.business.currency);
   // Combos primeiro e em largura total: é o card "mais completo" da grade.
   const orderedServices = useMemo(() => [...catalog.services].sort((a, b) => Number(b.isCombo) - Number(a.isCombo)), [catalog.services]);
-  const eligibleStaff = useMemo(() => catalog.staff.filter((member) => member.serviceIds.includes(serviceId)), [catalog.staff, serviceId]);
+  // Interseção das habilitações; "qualquer profissional" também exige alguém que faça todos.
+  const eligibleStaff = useMemo(() => catalog.staff.filter((member) => doesAll(member, serviceIds)), [catalog.staff, serviceIds]);
   const selectedStaff = eligibleStaff.find((item) => item.id === staffId);
   const selectedSlot = slots.find((item) => item.time === time);
+  const selectionReady = selectedServices.length > 0 && eligibleStaff.length > 0;
+
+  function toggleService(id: string) {
+    const next = serviceIds.includes(id) ? serviceIds.filter((item) => item !== id) : [...serviceIds, id];
+    setServiceIds(next);
+    // O profissional já escolhido pode não fazer o serviço recém-incluído: volta para "qualquer".
+    if (staffId !== "any" && !catalog.staff.some((member) => member.id === staffId && doesAll(member, next))) setStaffId("any");
+  }
+
+  /** Mesma seleção nas duas rotas de disponibilidade: um `serviceIds` por serviço. */
+  function selectionQuery(extra: Record<string, string>) {
+    const query = new URLSearchParams({ ...extra, staffId });
+    for (const item of selectedServices) query.append("serviceIds", item.id);
+    return query;
+  }
 
   async function loadAvailability(nextDate = date) {
     setAvailabilityError(undefined);
@@ -81,9 +117,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
       setTime("");
       return;
     }
-    const query = new URLSearchParams({ date: nextDate, serviceId, staffId });
     try {
-      const response = await fetch(`/api/public/${catalog.business.slug}/availability?${query}`);
+      const response = await fetch(`/api/public/${catalog.business.slug}/availability?${selectionQuery({ date: nextDate })}`);
       if (!response.ok) throw new Error("AVAILABILITY_FAILED");
       const payload = await response.json() as { slots: Slot[] };
       setSlots(payload.slots);
@@ -98,9 +133,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   /** Carrega os dias do mês; devolve o primeiro dia livre (ou "" se não houver). */
   async function loadMonth(nextMonth = month) {
     setMonthError(undefined);
-    const query = new URLSearchParams({ month: nextMonth, serviceId, staffId });
     try {
-      const response = await fetch(`/api/public/${catalog.business.slug}/availability/month?${query}`);
+      const response = await fetch(`/api/public/${catalog.business.slug}/availability/month?${selectionQuery({ month: nextMonth })}`);
       if (!response.ok) throw new Error("MONTH_FAILED");
       const payload = await response.json() as { days: CalendarDay[] };
       setDays(payload.days);
@@ -141,27 +175,33 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const lastStep = step === steps.length - 1;
 
   if (state.status === "success" && state.booking) {
+    const booking = state.booking;
     return (
       <Card className="panel-glow mx-auto max-w-xl border-white/20 bg-white/[.04]">
         <CardContent className="flex flex-col items-center p-8 text-center sm:p-12">
           <div className="grid size-16 place-items-center rounded-full bg-brand text-brand-ink"><Check className="size-7" /></div>
           <Badge className="mt-6">Reserva confirmada</Badge>
           <h1 className="font-heading mt-4 text-3xl font-semibold">Sua cadeira está reservada.</h1>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{state.booking.serviceName} com {state.booking.staffName}. Código {state.booking.appointmentId.slice(0, 8)}.</p>
-          <div className="mt-7 w-full rounded-2xl border border-white/10 bg-black/20 p-4 text-left"><div className="flex justify-between font-medium"><span>Total a pagar na barbearia</span><span>{euro(state.booking.totalCents)}</span></div></div>
-          <p className="mt-4 text-xs text-muted-foreground">Nada foi cobrado agora. Para cancelar, avise com {state.booking.cancellationNoticeHours}h de antecedência.</p>
+          <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{dateTimeLabel(booking.startsAt, catalog.business.timezone)} com {booking.staffName}. Código {booking.appointmentId.slice(0, 8)}.</p>
+          <div className="mt-7 w-full rounded-2xl border border-white/10 bg-black/20 p-4 text-left">
+            <ul className="flex flex-col gap-2 text-sm">{booking.services.map((item) => <li key={item.id} className="flex justify-between gap-3"><span>{item.name}</span><span className="text-muted-foreground">{item.durationMinutes} min · {money(item.priceCents, booking.currency)}</span></li>)}</ul>
+            <Separator className="my-3" />
+            <div className="flex justify-between text-xs text-muted-foreground"><span>Duração total</span><span>{booking.durationMinutes} min</span></div>
+            <div className="mt-2 flex justify-between font-medium"><span>Total a pagar na barbearia</span><span>{money(booking.totalCents, booking.currency)}</span></div>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">Nada foi cobrado agora. Para cancelar, avise com {booking.cancellationNoticeHours}h de antecedência.</p>
           <Button asChild className="mt-7 w-full"><Link href={`/barbearia/${catalog.business.slug}`}>Voltar à barbearia</Link></Button>
         </CardContent>
       </Card>
     );
   }
 
-  if (!service) return <Card><CardContent className="p-8 text-center">Nenhum serviço está disponível para reserva.</CardContent></Card>;
+  if (catalog.services.length === 0) return <Card><CardContent className="p-8 text-center">Nenhum serviço está disponível para reserva.</CardContent></Card>;
 
   return (
     <form action={action} className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[1fr_340px]">
       <input type="hidden" name="slug" value={catalog.business.slug} />
-      <input type="hidden" name="serviceId" value={serviceId} />
+      {selectedServices.map((item) => <input key={item.id} type="hidden" name="serviceIds" value={item.id} />)}
       <input type="hidden" name="staffId" value={staffId} />
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time" value={time} />
@@ -176,7 +216,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
           {step === 0 ? (
             <div className="flex flex-col gap-7">
               <div>
-                <p className="mb-3 text-xs font-medium text-muted-foreground">Serviço</p>
+                <p className="mb-3 text-xs font-medium text-muted-foreground">Serviços · escolha um ou mais</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {orderedServices.map((item) => {
                     const Icon = serviceIcon(item);
@@ -185,13 +225,13 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
                       <button
                         type="button"
                         key={item.id}
-                        onClick={() => { setServiceId(item.id); setStaffId("any"); }}
-                        aria-pressed={serviceId === item.id}
+                        onClick={() => toggleService(item.id)}
+                        aria-pressed={serviceIds.includes(item.id)}
                         className={cn("choice-card flex flex-col p-5 text-left", item.isCombo && "choice-card--featured sm:col-span-2")}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <span className="icon-tile size-11"><Icon className="size-5" aria-hidden="true" /></span>
-                          <span className="font-heading text-xl font-semibold tracking-tight">{euro(item.priceCents)}</span>
+                          <span className="font-heading text-xl font-semibold tracking-tight">{price(item.priceCents)}</span>
                         </div>
                         <p className="font-heading mt-5 text-lg font-semibold leading-tight">{item.name}</p>
                         {item.description ? <p className={cn("choice-muted mt-1.5 text-sm leading-5", item.isCombo && "sm:max-w-md")}>{item.description}</p> : null}
@@ -207,7 +247,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
               </div>
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Profissional</p>
-                <div className="grid gap-3 sm:grid-cols-2">
+                {eligibleStaff.length === 0 ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">Nenhum profissional faz todos esses serviços na mesma visita. Ajuste a seleção.</p> : <div className="grid gap-3 sm:grid-cols-2">
                   <button type="button" onClick={() => setStaffId("any")} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
                     <span className="icon-tile size-12 shrink-0"><UserRound className="size-5" aria-hidden="true" /></span>
                     <span className="min-w-0"><span className="block font-medium">Qualquer profissional</span><span className="choice-muted mt-1 block text-xs leading-5">O primeiro disponível para este horário.</span></span>
@@ -222,22 +262,22 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
                       </span>
                     </button>
                   ))}
-                </div>
+                </div>}
               </div>
             </div>
           ) : null}
           {step === 1 ? <div className="flex flex-col gap-6"><div><p className="mb-3 text-xs font-medium text-muted-foreground">Escolha o dia</p>{monthError ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{monthError}</p> : <MonthCalendar month={month} days={days} selected={date} minMonth={catalog.window.today.slice(0, 7)} maxMonth={catalog.window.last.slice(0, 7)} loading={isLoadingMonth} onMonthChange={changeMonth} onSelect={(value) => { setDate(value); startLoadingSlots(() => loadAvailability(value)); }} />}</div><div><p className="mb-3 text-xs font-medium text-muted-foreground">Horários disponíveis{date ? ` · ${dayLabel(date)}` : ""}</p>{isLoadingSlots || isLoadingMonth ? <p className="text-sm text-muted-foreground">Calculando disponibilidade...</p> : slots.length ? <ToggleGroup type="single" value={time} onValueChange={(value) => value && setTime(value)} className="grid grid-cols-3 gap-2 sm:grid-cols-4">{slots.map((item) => <ToggleGroupItem key={item.time} value={item.time} className="font-mono data-[state=on]:bg-brand data-[state=on]:text-brand-ink">{item.time}</ToggleGroupItem>)}</ToggleGroup> : <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{availabilityError ?? (date ? "Nenhum horário disponível neste dia." : "Nenhum dia com horário livre neste mês.")}</p>}</div><div className="rounded-xl border border-primary/20 bg-primary/6 p-3 text-xs text-muted-foreground"><ShieldCheck className="mr-2 inline size-4 text-brand" /> Conferimos a disponibilidade do seu horário antes de confirmar.</div></div> : null}
           {step === 2 ? (
             <div className="flex flex-col gap-6">
-              <div className="rounded-2xl border border-white/8 bg-black/15 p-5"><div className="flex items-center gap-3"><div className="icon-tile size-10"><CalendarCheck /></div><div><p className="font-medium">{service.name} com {selectedStaff?.displayName ?? "o primeiro profissional disponível"}</p><p className="text-xs text-muted-foreground">{dayLabel(date)} às {time}</p></div></div><Separator className="my-4" /><div className="flex justify-between text-sm"><span>Total, pago na barbearia</span><span className="font-heading text-xl font-semibold">{euro(service.priceCents)}</span></div><p className="mt-2 text-xs text-muted-foreground">Nada é cobrado agora. Para cancelar, avise com {catalog.business.cancellationNoticeHours}h de antecedência.</p></div>
+              <div className="rounded-2xl border border-white/8 bg-black/15 p-5"><div className="flex items-center gap-3"><div className="icon-tile size-10"><CalendarCheck /></div><div><p className="font-medium">{serviceNames} com {selectedStaff?.displayName ?? "o primeiro profissional disponível"}</p><p className="text-xs text-muted-foreground">{dayLabel(date)} às {time} · {totalMinutes} min</p></div></div><Separator className="my-4" /><div className="flex justify-between text-sm"><span>Total, pago na barbearia</span><span className="font-heading text-xl font-semibold">{price(totalCents)}</span></div><p className="mt-2 text-xs text-muted-foreground">Nada é cobrado agora. Para cancelar, avise com {catalog.business.cancellationNoticeHours}h de antecedência.</p></div>
               <FieldGroup><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="firstNameVisible">Nome</FieldLabel><Input id="firstNameVisible" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required /></Field><Field><FieldLabel htmlFor="lastNameVisible">Sobrenome</FieldLabel><Input id="lastNameVisible" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required /></Field></div><Field><FieldLabel htmlFor="bookingEmail">E-mail</FieldLabel><Input id="bookingEmail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></Field><Field><FieldLabel htmlFor="phoneVisible">Telefone</FieldLabel><Input id="phoneVisible" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" required /></Field><Field orientation="horizontal"><Checkbox id="policyVisible" checked={policy} onCheckedChange={(value) => setPolicy(value === true)} /><FieldLabel htmlFor="policyVisible" className="font-normal">Aceito a política de cancelamento de {catalog.business.cancellationNoticeHours} horas.</FieldLabel></Field></FieldGroup>
               {state.message ? <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
             </div>
           ) : null}
-          <div className="mt-8 flex items-center justify-between"><Button type="button" variant="ghost" onClick={(event) => { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }} disabled={step === 0 || pending}><ArrowLeft data-icon="inline-start" /> Voltar</Button>{lastStep ? <Button key="submit-booking" type="submit" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" disabled={pending || !time || !detailsReady}>{pending ? "Confirmando..." : "Confirmar reserva"}<Check data-icon="inline-start" /></Button> : <Button key={`continue-${step}`} type="button" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" onClick={(event) => { event.preventDefault(); next(); }} disabled={isLoadingSlots || isLoadingMonth || (step === 1 && (!time || !selectedSlot))}>Continuar <ArrowRight data-icon="inline-end" /></Button>}</div>
+          <div className="mt-8 flex items-center justify-between"><Button type="button" variant="ghost" onClick={(event) => { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }} disabled={step === 0 || pending}><ArrowLeft data-icon="inline-start" /> Voltar</Button>{lastStep ? <Button key="submit-booking" type="submit" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" disabled={pending || !time || !detailsReady}>{pending ? "Confirmando..." : "Confirmar reserva"}<Check data-icon="inline-start" /></Button> : <Button key={`continue-${step}`} type="button" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" onClick={(event) => { event.preventDefault(); next(); }} disabled={isLoadingSlots || isLoadingMonth || (step === 0 && !selectionReady) || (step === 1 && (!time || !selectedSlot))}>Continuar <ArrowRight data-icon="inline-end" /></Button>}</div>
         </CardContent>
       </Card>
-      <Card className="light-panel h-fit border-0 lg:sticky lg:top-5"><CardHeader><CardTitle className="font-heading text-base">Resumo da reserva</CardTitle></CardHeader><CardContent className="flex flex-col gap-4"><div><p className="text-xs text-muted-foreground">Serviço</p><p className="mt-1 text-sm font-medium">{service.name}</p><p className="text-xs text-muted-foreground">{service.durationMinutes} min</p></div><Separator /><div><p className="text-xs text-muted-foreground">Profissional</p><p className="mt-1 text-sm font-medium">{selectedStaff?.displayName ?? "Qualquer disponível"}</p></div><div><p className="text-xs text-muted-foreground">Data e horário</p><p className="mt-1 text-sm font-medium">{date ? `${dayLabel(date)} · ${time || "A escolher"}` : "A escolher"}</p></div><Separator /><div className="flex justify-between font-medium"><span>Total, pago na barbearia</span><span>{euro(service.priceCents)}</span></div><div className="rounded-xl border border-black/10 bg-black/5 p-3 text-xs leading-5 text-foreground"><CalendarCheck className="mr-2 inline size-4" /> Confirmação imediata, sem cobrança online.</div></CardContent></Card>
+      <Card className="light-panel h-fit border-0 lg:sticky lg:top-5"><CardHeader><CardTitle className="font-heading text-base">Resumo da reserva</CardTitle></CardHeader><CardContent className="flex flex-col gap-4"><div><p className="text-xs text-muted-foreground">Serviços</p>{selectedServices.length ? <ul className="mt-1 flex flex-col gap-1">{selectedServices.map((item) => <li key={item.id} className="flex justify-between gap-3 text-sm"><span className="font-medium">{item.name}</span><span className="text-muted-foreground">{item.durationMinutes} min · {price(item.priceCents)}</span></li>)}</ul> : <p className="mt-1 text-sm text-muted-foreground">Escolha pelo menos um serviço.</p>}<p className="mt-1 text-xs text-muted-foreground">{totalMinutes} min no total</p></div><Separator /><div><p className="text-xs text-muted-foreground">Profissional</p><p className="mt-1 text-sm font-medium">{selectedStaff?.displayName ?? "Qualquer disponível"}</p></div><div><p className="text-xs text-muted-foreground">Data e horário</p><p className="mt-1 text-sm font-medium">{date ? `${dayLabel(date)} · ${time || "A escolher"}` : "A escolher"}</p></div><Separator /><div className="flex justify-between font-medium"><span>Total, pago na barbearia</span><span>{price(totalCents)}</span></div><div className="rounded-xl border border-black/10 bg-black/5 p-3 text-xs leading-5 text-foreground"><CalendarCheck className="mr-2 inline size-4" /> Confirmação imediata, sem cobrança online.</div></CardContent></Card>
     </form>
   );
 }

@@ -1,6 +1,9 @@
+import "dotenv/config";
+
 import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
+import { Client } from "pg";
 
 // Contas demo do seed, também presentes no Supabase Auth com a senha do seed (script de migração).
 const accounts = { Proprietário: "owner@asbarber.be", Recepção: "recepcao@asbarber.be", Profissional: "lucas@asbarber.be" } as const;
@@ -39,15 +42,58 @@ test("owner signs in and sees the live dashboard", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Próximos horários" })).toBeVisible();
 });
 
-test("customer completes a persisted booking without an online deposit", async ({ page }) => {
+/** Lê o agendamento gravado pelo wizard direto no Postgres local (o E2E sobe contra ele). A
+ *  tela de sucesso não basta como prova: o que importa é o que ficou no banco. */
+async function readPersistedBooking(code: string) {
+  const client = new Client({ connectionString: process.env.LOCAL_DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query("SELECT set_config('app.bypass_rls', 'on', false)");
+    const appointments = await client.query<{ id: string; status: string; totalCents: number; depositCents: number; minutes: number }>(
+      'SELECT id, status, "totalCents", "depositCents", EXTRACT(EPOCH FROM ("endsAt" - "startsAt")) / 60 AS minutes FROM "Appointment" WHERE id LIKE $1',
+      [`${code}%`],
+    );
+    const items = appointments.rows[0]
+      ? await client.query<{ priceCents: number; durationMinutes: number }>('SELECT "priceCents", "durationMinutes" FROM "AppointmentService" WHERE "appointmentId" = $1', [appointments.rows[0].id])
+      : { rows: [] };
+    return { appointments: appointments.rows, items: items.rows };
+  } finally {
+    await client.end();
+  }
+}
+
+test("customer books three services in one persisted appointment without an online deposit", async ({ page }) => {
   await page.goto("/barbearia/as-barber-club/agendar");
   await expect(page.getByText("Passo 1 de 3")).toBeVisible();
-  await page.getByRole("button", { name: /Continuar/ }).click();
+  // Só o nome exato do card: a descrição do combo também cita "Barba Premium".
+  const serviceCard = (name: string) => page.getByRole("button").filter({ has: page.getByText(name, { exact: true }) });
+  const total = page.getByText("Total, pago na barbearia").locator("xpath=..");
+  const continueButton = page.getByRole("button", { name: /Continuar/ });
+
+  // Seleção vazia não avança.
+  await expect(continueButton).toBeDisabled();
+  // Seed: Barba Premium 30 min / 24,00 · Sobrancelha 15 min / 12,00 · Corte Máquina 30 min / 22,00.
+  await serviceCard("Barba Premium").click();
+  await serviceCard("Sobrancelha").click();
+  await serviceCard("Corte Máquina").click();
+  await expect(serviceCard("Barba Premium")).toHaveAttribute("aria-pressed", "true");
+  await expect(serviceCard("Corte Máquina")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("75 min no total")).toBeVisible();
+  await expect(total).toContainText("58,00");
+
+  // Remover um card recalcula os totais.
+  await serviceCard("Corte Máquina").click();
+  await expect(serviceCard("Corte Máquina")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("45 min no total")).toBeVisible();
+  await expect(total).toContainText("36,00");
+
+  await continueButton.click();
   await expect(page.getByText(/Horários disponíveis/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Próximo mês" })).toBeVisible();
   await expect(page.locator("button.font-mono[data-state]").first()).toBeVisible();
-  await page.getByRole("button", { name: /Continuar/ }).click();
+  await continueButton.click();
   await expect(page.getByText("Passo 3 de 3")).toBeVisible();
+  await expect(page.getByText("Barba Premium + Sobrancelha", { exact: false }).first()).toBeVisible();
   await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Cliente");
   await page.getByLabel("Sobrenome").fill("Playwright");
   await page.getByLabel("E-mail").fill("playwright@example.com");
@@ -56,6 +102,18 @@ test("customer completes a persisted booking without an online deposit", async (
   await expect(page.getByRole("heading", { name: "Sua cadeira está reservada." })).toBeVisible();
   await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
   await expect(page.getByText("Nada foi cobrado agora", { exact: false })).toBeVisible();
+  await expect(page.getByText("Barba Premium", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sobrancelha", { exact: true })).toBeVisible();
+  await expect(page.getByText("45 min", { exact: false }).first()).toBeVisible();
+
+  const code = (await page.getByText(/Código [0-9a-z]{8}/).textContent())?.match(/Código ([0-9a-z]{8})/)?.[1];
+  expect(code).toBeTruthy();
+  const persisted = await readPersistedBooking(code!);
+  expect(persisted.appointments).toHaveLength(1);
+  expect(persisted.appointments[0]).toMatchObject({ status: "CONFIRMED", totalCents: 3600, depositCents: 0 });
+  expect(Number(persisted.appointments[0]?.minutes)).toBe(45);
+  expect(persisted.items).toHaveLength(2);
+  expect(persisted.items.map((item) => [item.priceCents, item.durationMinutes]).sort()).toEqual([[1200, 15], [2400, 30]]);
 });
 
 test("owner creates a customer and the record survives reload", async ({ page }) => {

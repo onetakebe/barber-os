@@ -12,7 +12,7 @@ export default async function BookingPage({ params, searchParams }: { params: Pr
   if (!catalog) notFound();
   const window = getBookingWindow(catalog.timezone);
   const bookingCatalog = {
-    business: { name: catalog.name, slug: catalog.slug, timezone: catalog.timezone, defaultDepositCents: catalog.defaultDepositCents, cancellationNoticeHours: catalog.cancellationNoticeHours },
+    business: { name: catalog.name, slug: catalog.slug, timezone: catalog.timezone, currency: catalog.currency, defaultDepositCents: catalog.defaultDepositCents, cancellationNoticeHours: catalog.cancellationNoticeHours },
     services: catalog.services,
     staff: catalog.staff.map((member) => ({ id: member.id, displayName: member.displayName, title: member.title, imageUrl: member.imageUrl, rating: member.rating, reviewCount: member.reviewCount, serviceIds: member.services.map((service) => service.serviceId) })),
     window: { today: window.today, last: window.last },
