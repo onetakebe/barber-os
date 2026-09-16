@@ -6,16 +6,16 @@ export type BookingServices = { items: BookingServiceItem[]; durationMinutes: nu
 
 /** Entrada de quem escolhe serviços: a reserva pública manda a lista; a agenda interna, a fila
  *  de espera e o próximo horário da página pública continuam mandando um `serviceId` só. */
-export type ServiceSelection = { serviceIds?: string[]; serviceId?: string };
+export type ServiceSelection = { serviceIds: string[]; serviceId?: never } | { serviceId: string; serviceIds?: never };
 
 export function normalizeServiceIds(input: ServiceSelection): string[] {
-  return input.serviceIds ?? (input.serviceId ? [input.serviceId] : []);
+  return input.serviceIds ?? [input.serviceId];
 }
 
 /** Campo repetido `serviceIds` de um formulário ou query string. `Object.fromEntries()` sozinho
  *  fica só com o último valor. O `serviceId` único dos consumidores internos segue valendo. */
 export function readServiceIds(source: { getAll(name: string): (string | File)[] }): string[] {
-  const values = (name: string) => source.getAll(name).filter((value): value is string => typeof value === "string" && value.length > 0);
+  const values = (name: string) => source.getAll(name).filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter((value) => value.length > 0);
   const repeated = values("serviceIds");
   return repeated.length ? repeated : values("serviceId");
 }

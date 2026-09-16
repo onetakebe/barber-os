@@ -26,7 +26,7 @@ export type BookingActionState = {
 
 const schema = z.object({
   slug: z.string().min(1),
-  serviceIds: z.array(z.string().min(1)).min(1, "Escolha pelo menos um serviço."),
+  serviceIds: z.array(z.string().min(1)).min(1, "Escolha pelo menos um serviço.").max(20),
   staffId: z.string().min(1),
   date: z.iso.date(),
   time: z.string().regex(/^\d{2}:\d{2}$/),
@@ -50,7 +50,9 @@ export async function createPublicBookingAction(_state: BookingActionState, form
   if (!parsed.success) return { status: "error", errors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
   try {
     const booking = await createPublicBooking(parsed.data);
-    return { status: "success", message: "Reserva confirmada.", booking: { ...booking, startsAt: booking.startsAt.toISOString(), endsAt: booking.endsAt.toISOString() } };
+    // Só o que a tela mostra: `tenantId`/`customerId` ficam no servidor.
+    const { appointmentId, services, staffName, startsAt, endsAt, durationMinutes, currency, totalCents, cancellationNoticeHours } = booking;
+    return { status: "success", message: "Reserva confirmada.", booking: { appointmentId, services, staffName, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), durationMinutes, currency, totalCents, cancellationNoticeHours } };
   } catch (error) {
     if (error instanceof BookingError) return { status: "error", message: messages[error.code] };
     console.error("PUBLIC_BOOKING_FAILED", error);

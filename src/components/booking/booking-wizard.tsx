@@ -1,13 +1,15 @@
 "use client";
 
 import { useActionState, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { ArrowLeft, ArrowRight, CalendarCheck, Check, Clock, Crown, Eye, ShieldCheck, Sparkles, Scissors, Star, UserRound, Users, Zap, type LucideIcon } from "lucide-react";
 
 import { createPublicBookingAction, type BookingActionState } from "@/app/(public)/barbearia/[slug]/agendar/actions";
+import { dayLabel, money } from "@/components/booking/booking-format";
+import { doesAll, initialSelection, toggleSelection } from "@/components/booking/booking-selection";
+import { BookingSuccess } from "@/components/booking/booking-success";
+import { BookingSummary } from "@/components/booking/booking-summary";
 import { MonthCalendar, type CalendarDay } from "@/components/booking/month-calendar";
 import { StaffAvatar } from "@/components/staff-avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,10 +33,7 @@ type BookingCatalog = {
 
 type Slot = { time: string; startsAt: string; endsAt: string; staffIds: string[] };
 const steps = ["Serviço e profissional", "Dia e horário", "Seus dados"];
-const dayLabel = (date: string) => date ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "short", day: "2-digit", month: "short" }).format(new Date(`${date}T12:00:00.000Z`)).replace(".", "") : "";
 const initialState: BookingActionState = { status: "idle" };
-const money = (cents: number, currency: string) => new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(cents / 100);
-const dateTimeLabel = (iso: string, timezone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: timezone, weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)).replace(".", "");
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).slice(0, 2).join("");
@@ -50,23 +49,11 @@ function serviceIcon(service: { name: string; isCombo: boolean }): LucideIcon {
   return Scissors;
 }
 
-/** Um barbeiro só faz a reserva inteira: precisa estar habilitado em todos os serviços escolhidos. */
-function doesAll(member: { serviceIds: string[] }, serviceIds: string[]) {
-  return serviceIds.every((id) => member.serviceIds.includes(id));
-}
-
-/** `?servico=` pré-seleciona um serviço; sem ele a seleção começa vazia. O profissional da URL
- *  só vale se fizer esse serviço. */
-function initialSelection(catalog: BookingCatalog) {
-  const serviceIds = catalog.services.some((item) => item.id === catalog.initialServiceId) ? [catalog.initialServiceId!] : [];
-  const staff = catalog.staff.find((item) => item.id === catalog.initialStaffId);
-  return { serviceIds, staffId: staff && doesAll(staff, serviceIds) ? staff.id : "any" };
-}
-
 export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [step, setStep] = useState(0);
-  const [serviceIds, setServiceIds] = useState(() => initialSelection(catalog).serviceIds);
-  const [staffId, setStaffId] = useState(() => initialSelection(catalog).staffId);
+  // Serviços e profissional andam juntos: alternar um card pode invalidar o barbeiro escolhido.
+  const [selection, setSelection] = useState(() => initialSelection(catalog));
+  const { serviceIds, staffId } = selection;
   const [month, setMonth] = useState(catalog.window.today.slice(0, 7));
   const [days, setDays] = useState<CalendarDay[]>([]);
   const [monthError, setMonthError] = useState<string>();
@@ -96,12 +83,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const selectedSlot = slots.find((item) => item.time === time);
   const selectionReady = selectedServices.length > 0 && eligibleStaff.length > 0;
 
-  function toggleService(id: string) {
-    const next = serviceIds.includes(id) ? serviceIds.filter((item) => item !== id) : [...serviceIds, id];
-    setServiceIds(next);
-    // O profissional já escolhido pode não fazer o serviço recém-incluído: volta para "qualquer".
-    if (staffId !== "any" && !catalog.staff.some((member) => member.id === staffId && doesAll(member, next))) setStaffId("any");
-  }
+  const toggleService = (id: string) => setSelection((current) => toggleSelection(current, id, catalog));
+  const selectStaff = (id: string) => setSelection((current) => ({ ...current, staffId: id }));
 
   /** Mesma seleção nas duas rotas de disponibilidade: um `serviceIds` por serviço. */
   function selectionQuery(extra: Record<string, string>) {
@@ -174,27 +157,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const detailsReady = Boolean(firstName && lastName && email && phone && policy);
   const lastStep = step === steps.length - 1;
 
-  if (state.status === "success" && state.booking) {
-    const booking = state.booking;
-    return (
-      <Card className="panel-glow mx-auto max-w-xl border-white/20 bg-white/[.04]">
-        <CardContent className="flex flex-col items-center p-8 text-center sm:p-12">
-          <div className="grid size-16 place-items-center rounded-full bg-brand text-brand-ink"><Check className="size-7" /></div>
-          <Badge className="mt-6">Reserva confirmada</Badge>
-          <h1 className="font-heading mt-4 text-3xl font-semibold">Sua cadeira está reservada.</h1>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{dateTimeLabel(booking.startsAt, catalog.business.timezone)} com {booking.staffName}. Código {booking.appointmentId.slice(0, 8)}.</p>
-          <div className="mt-7 w-full rounded-2xl border border-white/10 bg-black/20 p-4 text-left">
-            <ul className="flex flex-col gap-2 text-sm">{booking.services.map((item) => <li key={item.id} className="flex justify-between gap-3"><span>{item.name}</span><span className="text-muted-foreground">{item.durationMinutes} min · {money(item.priceCents, booking.currency)}</span></li>)}</ul>
-            <Separator className="my-3" />
-            <div className="flex justify-between text-xs text-muted-foreground"><span>Duração total</span><span>{booking.durationMinutes} min</span></div>
-            <div className="mt-2 flex justify-between font-medium"><span>Total a pagar na barbearia</span><span>{money(booking.totalCents, booking.currency)}</span></div>
-          </div>
-          <p className="mt-4 text-xs text-muted-foreground">Nada foi cobrado agora. Para cancelar, avise com {booking.cancellationNoticeHours}h de antecedência.</p>
-          <Button asChild className="mt-7 w-full"><Link href={`/barbearia/${catalog.business.slug}`}>Voltar à barbearia</Link></Button>
-        </CardContent>
-      </Card>
-    );
-  }
+  if (state.status === "success" && state.booking) return <BookingSuccess booking={state.booking} business={catalog.business} />;
 
   if (catalog.services.length === 0) return <Card><CardContent className="p-8 text-center">Nenhum serviço está disponível para reserva.</CardContent></Card>;
 
@@ -248,12 +211,12 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Profissional</p>
                 {eligibleStaff.length === 0 ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">Nenhum profissional faz todos esses serviços na mesma visita. Ajuste a seleção.</p> : <div className="grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => setStaffId("any")} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
+                  <button type="button" onClick={() => selectStaff("any")} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
                     <span className="icon-tile size-12 shrink-0"><UserRound className="size-5" aria-hidden="true" /></span>
                     <span className="min-w-0"><span className="block font-medium">Qualquer profissional</span><span className="choice-muted mt-1 block text-xs leading-5">O primeiro disponível para este horário.</span></span>
                   </button>
                   {eligibleStaff.map((member) => (
-                    <button type="button" key={member.id} onClick={() => setStaffId(member.id)} aria-pressed={staffId === member.id} className="choice-card flex items-start gap-4 p-4 text-left">
+                    <button type="button" key={member.id} onClick={() => selectStaff(member.id)} aria-pressed={staffId === member.id} className="choice-card flex items-start gap-4 p-4 text-left">
                       <StaffAvatar imageUrl={member.imageUrl} initials={initials(member.displayName)} className="size-12" />
                       <span className="min-w-0">
                         <span className="block font-medium">{member.displayName}</span>
@@ -277,7 +240,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
           <div className="mt-8 flex items-center justify-between"><Button type="button" variant="ghost" onClick={(event) => { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }} disabled={step === 0 || pending}><ArrowLeft data-icon="inline-start" /> Voltar</Button>{lastStep ? <Button key="submit-booking" type="submit" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" disabled={pending || !time || !detailsReady}>{pending ? "Confirmando..." : "Confirmar reserva"}<Check data-icon="inline-start" /></Button> : <Button key={`continue-${step}`} type="button" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" onClick={(event) => { event.preventDefault(); next(); }} disabled={isLoadingSlots || isLoadingMonth || (step === 0 && !selectionReady) || (step === 1 && (!time || !selectedSlot))}>Continuar <ArrowRight data-icon="inline-end" /></Button>}</div>
         </CardContent>
       </Card>
-      <Card className="light-panel h-fit border-0 lg:sticky lg:top-5"><CardHeader><CardTitle className="font-heading text-base">Resumo da reserva</CardTitle></CardHeader><CardContent className="flex flex-col gap-4"><div><p className="text-xs text-muted-foreground">Serviços</p>{selectedServices.length ? <ul className="mt-1 flex flex-col gap-1">{selectedServices.map((item) => <li key={item.id} className="flex justify-between gap-3 text-sm"><span className="font-medium">{item.name}</span><span className="text-muted-foreground">{item.durationMinutes} min · {price(item.priceCents)}</span></li>)}</ul> : <p className="mt-1 text-sm text-muted-foreground">Escolha pelo menos um serviço.</p>}<p className="mt-1 text-xs text-muted-foreground">{totalMinutes} min no total</p></div><Separator /><div><p className="text-xs text-muted-foreground">Profissional</p><p className="mt-1 text-sm font-medium">{selectedStaff?.displayName ?? "Qualquer disponível"}</p></div><div><p className="text-xs text-muted-foreground">Data e horário</p><p className="mt-1 text-sm font-medium">{date ? `${dayLabel(date)} · ${time || "A escolher"}` : "A escolher"}</p></div><Separator /><div className="flex justify-between font-medium"><span>Total, pago na barbearia</span><span>{price(totalCents)}</span></div><div className="rounded-xl border border-black/10 bg-black/5 p-3 text-xs leading-5 text-foreground"><CalendarCheck className="mr-2 inline size-4" /> Confirmação imediata, sem cobrança online.</div></CardContent></Card>
+      <BookingSummary services={selectedServices} totalMinutes={totalMinutes} totalCents={totalCents} currency={catalog.business.currency} staffName={selectedStaff?.displayName} date={date} time={time} />
     </form>
   );
 }

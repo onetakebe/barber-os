@@ -28,7 +28,7 @@ describe("service selection input", () => {
 
   it("reads every repeated serviceIds value from a form", () => {
     const form = new FormData();
-    form.append("serviceIds", "a");
+    form.append("serviceIds", " a ");
     form.append("serviceIds", "");
     form.append("serviceIds", "b");
     expect(readServiceIds(form)).toEqual(["a", "b"]);
@@ -42,6 +42,5 @@ describe("service selection input", () => {
   it("normalizes a single serviceId into a one-item list", () => {
     expect(normalizeServiceIds({ serviceId: "a" })).toEqual(["a"]);
     expect(normalizeServiceIds({ serviceIds: ["a", "b"] })).toEqual(["a", "b"]);
-    expect(normalizeServiceIds({})).toEqual([]);
   });
 });

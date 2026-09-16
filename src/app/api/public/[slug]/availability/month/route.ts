@@ -6,7 +6,7 @@ import { readServiceIds } from "@/server/services/booking-services";
 
 const querySchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-  serviceIds: z.array(z.string().min(1)).min(1),
+  serviceIds: z.array(z.string().min(1)).min(1).max(20),
   staffId: z.string().min(1).optional(),
 });
 

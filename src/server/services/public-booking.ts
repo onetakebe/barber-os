@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import { adminDb, tenantDb, tenantTransaction } from "@/server/db";
+import { adminDb, tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant, getBookingWindow } from "@/server/data/public-booking";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
-import { resolveBookingServices } from "@/server/services/booking-services";
 
 export type CreatePublicBookingInput = {
   slug: string;
@@ -25,18 +24,19 @@ export type CreatePublicBookingInput = {
  * sobrevive a duas reservas simultâneas.
  */
 export async function createPublicBooking(input: CreatePublicBookingInput) {
-  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true, currency: true, cancellationNoticeHours: true } });
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, name: true, timezone: true, currency: true, cancellationNoticeHours: true } });
   if (!tenant) throw new BookingError("RESOURCE_NOT_FOUND");
   // Janela pública (hoje–hoje+60) também vale no servidor; o calendário só a esconde.
   const window = getBookingWindow(tenant.timezone);
   if (input.date < window.today || input.date > window.last) throw new BookingError("OUTSIDE_WINDOW");
 
-  const db = tenantDb(tenant.id);
-  const services = await resolveBookingServices(db, tenant.id, input.serviceIds);
+  // A disponibilidade já resolve (e valida) os serviços: itens, duração somada e total.
   const availability = await getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceIds: input.serviceIds, staffId: input.staffId, now: new Date() });
+  const services = availability.services;
   const selected = selectBookingSlot(availability.slots, input.time, input.staffId);
   const appointmentId = randomUUID();
   const serviceNames = services.items.map((item) => item.name).join(" + ");
+  const confirmed = services.items.length > 1 ? "confirmados" : "confirmado";
   // Sem adquirente real não há sinal online (decisão de 13/09): a reserva confirma sem cobrar.
   // `Service.depositRequired` e `Tenant.defaultDepositCents` seguem no cadastro para quando houver.
 
@@ -64,9 +64,13 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
         },
         select: { id: true, startsAt: true, endsAt: true, staff: { select: { displayName: true } } },
       });
-      await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "SENT", title: "Reserva confirmada", body: `${serviceNames} confirmado para ${input.date} às ${input.time}. Envio simulado.`, metadata: { simulated: true }, sentAt: new Date() } });
+      await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "SENT", title: "Reserva confirmada", body: `${serviceNames} ${confirmed} para ${input.date} às ${input.time}. Envio simulado.`, metadata: { simulated: true }, sentAt: new Date() } });
       return {
         appointmentId: appointment.id,
+        tenantId: tenant.id,
+        customerId: customer.id,
+        businessName: tenant.name,
+        timezone: tenant.timezone,
         services: services.items,
         staffName: appointment.staff.displayName,
         startsAt: appointment.startsAt,

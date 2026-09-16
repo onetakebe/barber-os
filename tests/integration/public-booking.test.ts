@@ -80,7 +80,8 @@ describe.sequential("reserva pública com vários serviços", () => {
   describe("disponibilidade", () => {
     it("só lista profissionais habilitados em todos os serviços e usa a duração somada", async () => {
       const availability = await getAvailabilityForTenant({ tenantId, timezone, date, serviceIds: all(), staffId: "any" });
-      expect(availability.durationMinutes).toBe(60);
+      expect(availability.services.durationMinutes).toBe(60);
+      expect(availability.services.totalCents).toBe(5000);
       expect(availability.slots.length).toBeGreaterThan(0);
       expect(availability.slots.every((slot) => slot.staffIds.includes(fullStaffId) && !slot.staffIds.includes(partialStaffId))).toBe(true);
       // 60 minutos numa jornada até 17:00: o último início possível é 16:00.
@@ -98,7 +99,7 @@ describe.sequential("reserva pública com vários serviços", () => {
 
     it("continua aceitando o serviceId único dos consumidores internos", async () => {
       const day = await getAvailabilityForTenant({ tenantId, timezone, date, serviceId: services.corte, staffId: "any" });
-      expect(day.serviceIds).toEqual([services.corte]);
+      expect(day.services.items.map((item) => item.id)).toEqual([services.corte]);
       expect(day.slots.length).toBeGreaterThan(0);
       const month = await getBookableDaysForTenant({ tenantId, timezone, month: date.slice(0, 7), serviceId: services.corte, staffId: "any" });
       expect(month.days.find((item) => item.date === date)?.available).toBe(true);
@@ -116,6 +117,9 @@ describe.sequential("reserva pública com vários serviços", () => {
       expect(booking.durationMinutes).toBe(60);
       expect(booking.totalCents).toBe(5000);
       expect(booking.currency).toBe("EUR");
+      // Campos para o e-mail de confirmação (ticket seguinte): quem, onde e em que fuso.
+      expect(booking).toMatchObject({ tenantId, businessName: "Reserva multi", timezone });
+      expect(booking.customerId).toBeTruthy();
       expect(booking.endsAt.getTime() - booking.startsAt.getTime()).toBe(60 * 60_000);
 
       const db = tenantDb(tenantId);

@@ -132,7 +132,8 @@ export async function getAvailabilityForTenant(input: ServiceSelection & { tenan
   const staff = await loadStaffRecords(db, { tenantId: input.tenantId, serviceIds, staffId: input.staffId, startsAt, endsAt });
 
   const slots = getAvailableSlotsFromRecords({ date: input.date, timezone: input.timezone, durationMinutes: services.durationMinutes, intervalMinutes: SLOT_INTERVAL_MINUTES, staff, now: input.now }).filter((slot) => slot.staffIds.length > 0);
-  return { tenantId: input.tenantId, serviceIds, durationMinutes: services.durationMinutes, timezone: input.timezone, slots };
+  // `services` vai junto: quem reserva já tem itens, duração e total sem consultar de novo.
+  return { tenantId: input.tenantId, timezone: input.timezone, services, slots };
 }
 
 /** Dias de um mês (YYYY-MM) com pelo menos um horário livre — uma consulta para o mês inteiro. */
@@ -146,7 +147,7 @@ export async function getBookableDaysForTenant(input: ServiceSelection & { tenan
   const staff = await loadStaffRecords(db, { tenantId: input.tenantId, serviceIds, staffId: input.staffId, startsAt, endsAt });
 
   const days = getBookableDaysFromRecords({ month: input.month, timezone: input.timezone, now: input.now ?? new Date(), horizonDays: BOOKING_HORIZON_DAYS, durationMinutes: services.durationMinutes, intervalMinutes: SLOT_INTERVAL_MINUTES, staff });
-  return { tenantId: input.tenantId, serviceIds, durationMinutes: services.durationMinutes, timezone: input.timezone, days };
+  return { tenantId: input.tenantId, timezone: input.timezone, services, days };
 }
 
 export async function getPublicAvailability(input: ServiceSelection & { slug: string; date: string; staffId?: string; includeStarted?: boolean }) {

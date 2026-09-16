@@ -62,7 +62,7 @@ async function readPersistedBooking(code: string) {
   }
 }
 
-test("customer books three services in one persisted appointment without an online deposit", async ({ page }) => {
+test("customer toggles three services and persists two in one appointment without an online deposit", async ({ page }) => {
   await page.goto("/barbearia/as-barber-club/agendar");
   await expect(page.getByText("Passo 1 de 3")).toBeVisible();
   // Só o nome exato do card: a descrição do combo também cita "Barba Premium".

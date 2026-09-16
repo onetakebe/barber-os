@@ -6,7 +6,7 @@ import { readServiceIds } from "@/server/services/booking-services";
 
 const querySchema = z.object({
   date: z.iso.date(),
-  serviceIds: z.array(z.string().min(1)).min(1),
+  serviceIds: z.array(z.string().min(1)).min(1).max(20),
   staffId: z.string().min(1).optional(),
   // Painel: registra atendimento de hoje que já começou. Só muda o que é listado — a reserva
   // pública sempre recusa horário já iniciado (createPublicBooking recalcula com o corte).
