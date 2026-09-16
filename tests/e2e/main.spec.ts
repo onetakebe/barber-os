@@ -16,16 +16,16 @@ async function signInQuick(page: Page, account: keyof typeof accounts) {
 test("public barbershop presents the commercial experience without horizontal overflow", async ({ page }) => {
   await mkdir("artifacts", { recursive: true });
   await page.goto("/barbearia/as-barber-club");
-  // Copy do redesign de setembro (Grafite Acolhedor).
-  await expect(page.getByRole("heading", { name: /Bom corte\.\s*Boa conversa\./ }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Encontre seu ritual\./ })).toBeVisible();
+  // Copy de 14/09: promessa concreta no hero, preço sem surpresa nos serviços.
+  await expect(page.getByRole("heading", { name: /Seu barbeiro,\s*na sua hora\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Serviços e preços\. Sem surpresa\./ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Agendar/ }).first()).toHaveAttribute("href", "/barbearia/as-barber-club/agendar");
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", await page.locator("html").evaluate((element) => element.clientWidth));
   await page.screenshot({ path: "artifacts/barbershop-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole("heading", { name: /Bom corte\.\s*Boa conversa\./ }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Seu barbeiro,\s*na sua hora\./ })).toBeVisible();
   const viewportWidth = await page.locator("html").evaluate((element) => element.clientWidth);
   const documentWidth = await page.locator("html").evaluate((element) => element.scrollWidth);
   expect(documentWidth).toBe(viewportWidth);

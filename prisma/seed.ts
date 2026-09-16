@@ -66,7 +66,7 @@ async function seed() {
       id: tenantId,
       name: "AS Barber Club",
       slug: "as-barber-club",
-      description: "Barbearia contemporânea no coração de Bruxelas.",
+      description: "Abrimos na Dansaert para fazer uma coisa só, bem feita. Quatro barbeiros, café passado na hora e conversa boa. Sem fila, sem pressa.",
       phone: "+32 2 555 01 84",
       email: "club@asbarber.be",
       address: "Rue Antoine Dansaert 74",
