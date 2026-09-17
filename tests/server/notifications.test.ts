@@ -253,6 +253,15 @@ describe("máquina de estados da fila", () => {
     expect(rows.map((row) => row.lastError)).toEqual(["INVALID_EVENT_SNAPSHOT", "UNKNOWN_TEMPLATE"]);
   });
 
+  it("retentativa ainda no prazo de backoff é ignorada mesmo se foi listada antes", async () => {
+    // Passagem 1 falhou e agendou nextAttemptAt; passagem 2 já tinha listado a linha vencida.
+    const { store } = memoryStore([{ ...queuedRow(), attempts: 1, nextAttemptAt: new Date(now.getTime() + 60_000) }]);
+    const send = vi.fn(async () => ({ providerMessageId: "x" }));
+    await expect(dispatchNotification("n1", { store, providers: enabled(fakeProvider(send)), now })).resolves.toBe("SKIPPED");
+    expect(send).not.toHaveBeenCalled();
+    expect((await store.find("n1"))?.attempts).toBe(1);
+  });
+
   it("linha já enviada, legada (sem eventKey) ou inexistente é ignorada", async () => {
     const { store, updates } = memoryStore([queuedRow({ id: "sent", status: "SENT" }), queuedRow({ id: "legacy", eventKey: null, templateKey: null, metadata: { simulated: true } })]);
     const send = vi.fn(async () => ({ providerMessageId: "never" }));

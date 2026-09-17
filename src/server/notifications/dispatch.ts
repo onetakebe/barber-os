@@ -40,6 +40,8 @@ export async function dispatchNotification(notificationId: string, options: Disp
   const row = await store.find(notificationId);
   if (!row) return "NOT_FOUND";
   if (row.status !== "QUEUED" || !row.eventKey || !row.recipient) return "SKIPPED";
+  // Revalida o prazo na linha relida: duas passagens sobrepostas não podem queimar o backoff.
+  if (row.nextAttemptAt && row.nextAttemptAt > now) return "SKIPPED";
   const expected = { attempts: row.attempts };
 
   // Toda transição é condicionada à linha lida; se perdeu a corrida, avisa e não finge resultado.
