@@ -261,7 +261,6 @@ export async function adjustInventoryAction(_state: ModuleActionState, formData:
   if (!parsed.success) return { status: "error", errors: validationErrors(parsed.error) };
   try {
     const session = await authorizeAction("products:edit");
-    const db = tenantDb(session.tenantId);
     await tenantTransaction(session.tenantId, async (tx) => {
       const product = await tx.product.findFirst({ where: { id: parsed.data.productId, tenantId: session.tenantId, deletedAt: null }, select: { id: true, stock: true } });
       if (!product) throw new Error("PRODUCT_NOT_FOUND");

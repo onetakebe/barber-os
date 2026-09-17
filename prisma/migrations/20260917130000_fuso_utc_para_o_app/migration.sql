@@ -1,0 +1,12 @@
+-- O adapter pg do Prisma envia timestamptz como texto UTC sem offset e o Postgres interpreta
+-- no TimeZone da sessão. No Supabase a sessão sempre foi UTC, então os registros de lá estão
+-- corretos e não mudam. Num Postgres local em Europe/Brussels o instante era gravado deslocado
+-- (bug aberto desde 08/09: só o SQL cru discordava do app) — e a leitura compensava.
+--
+-- ATENÇÃO em ambientes cuja sessão NÃO era UTC: os registros gravados antes desta migração
+-- estão deslocados pelo offset local e passam a ser lidos sem a compensação. O banco local é
+-- descartável (o E2E reseeda; `npm run db:seed` regrava tudo pelo Prisma já em UTC). Se algum
+-- ambiente assim tiver dados reais, converta-os antes: UPDATE ... SET "startsAt" = "startsAt"
+-- - (offset da sessão antiga) nas colunas timestamptz gravadas pelo app.
+-- Conexões já abertas mantêm o TimeZone antigo até serem recicladas (reinicie o app/pooler).
+ALTER ROLE barber_app SET timezone = 'UTC';

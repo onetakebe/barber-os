@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { tenantDb, tenantTransaction } from "@/server/db";
+import { tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant } from "@/server/data/public-booking";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
 
@@ -26,21 +26,15 @@ export type CreateInternalBookingInput = {
  * não por consulta prévia, então sobrevive a duas recepcionistas marcando ao mesmo tempo.
  */
 export async function createInternalBooking(input: CreateInternalBookingInput) {
-  const db = tenantDb(input.tenantId);
-  const service = await db.service.findFirst({
-    where: { id: input.serviceId, tenantId: input.tenantId, isActive: true, deletedAt: null },
-    select: { id: true, name: true, priceCents: true, durationMinutes: true },
-  });
-  if (!service) throw new BookingError("RESOURCE_NOT_FOUND");
-
+  // A disponibilidade já valida o serviço (inativo/excluído → RESOURCE_NOT_FOUND) e o devolve.
   const availability = await getAvailabilityForTenant({
     tenantId: input.tenantId,
     timezone: input.timezone,
     date: input.date,
-    serviceId: service.id,
+    serviceId: input.serviceId,
     staffId: input.staffId,
   });
-  if (!availability) throw new BookingError("RESOURCE_NOT_FOUND");
+  const [service] = availability.services.items;
   const selected = selectBookingSlot(availability.slots, input.time, input.staffId);
   const appointmentId = randomUUID();
 

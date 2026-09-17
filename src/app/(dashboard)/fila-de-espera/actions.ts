@@ -7,6 +7,7 @@ import { AuthorizationError, authorizeAction } from "@/server/auth/authorization
 import { getPublicAvailability } from "@/server/data/public-booking";
 import { tenantDb, tenantTransaction } from "@/server/db";
 import { MockWhatsAppProvider } from "@/server/integrations/messaging";
+import { BookingError } from "@/server/services/booking";
 
 export type WaitlistActionState = { status: "idle" | "success" | "error"; message?: string; errors?: Record<string, string[]> };
 
@@ -73,6 +74,8 @@ export async function offerWaitlistSlotAction(_state: WaitlistActionState, formD
   } catch (error) {
     if (error instanceof AuthorizationError) return { status: "error", message: "Seu perfil não pode oferecer vagas." };
     if (error instanceof Error && error.message === "WAITLIST_ALREADY_OFFERED") return { status: "error", message: "Esta vaga já foi oferecida por outra sessão." };
+    // Serviço da entrada desativado/excluído depois de ela entrar na fila.
+    if (error instanceof BookingError) return { status: "error", message: "O serviço desta entrada não está mais disponível." };
     console.error("OFFER_WAITLIST_FAILED", error);
     return { status: "error", message: "Não foi possível oferecer a vaga." };
   }

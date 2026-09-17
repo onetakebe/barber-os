@@ -3,19 +3,19 @@ import { notFound } from "next/navigation";
 
 import { BookingWizard } from "@/components/booking/booking-wizard";
 import { BrandMark } from "@/components/brand-mark";
-import { getBookableDates, getPublicBookingCatalog } from "@/server/data/public-booking";
+import { getBookingWindow, getPublicBookingCatalog } from "@/server/data/public-booking";
 
 export default async function BookingPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ servico?: string; profissional?: string }> }) {
   const { slug } = await params;
   const selection = await searchParams;
   const catalog = await getPublicBookingCatalog(slug);
   if (!catalog) notFound();
-  const dates = getBookableDates(catalog.timezone);
+  const window = getBookingWindow(catalog.timezone);
   const bookingCatalog = {
-    business: { name: catalog.name, slug: catalog.slug, timezone: catalog.timezone, defaultDepositCents: catalog.defaultDepositCents, cancellationNoticeHours: catalog.cancellationNoticeHours },
+    business: { name: catalog.name, slug: catalog.slug, timezone: catalog.timezone, currency: catalog.currency, defaultDepositCents: catalog.defaultDepositCents, cancellationNoticeHours: catalog.cancellationNoticeHours },
     services: catalog.services,
     staff: catalog.staff.map((member) => ({ id: member.id, displayName: member.displayName, title: member.title, imageUrl: member.imageUrl, rating: member.rating, reviewCount: member.reviewCount, serviceIds: member.services.map((service) => service.serviceId) })),
-    dates,
+    window: { today: window.today, last: window.last },
     initialServiceId: selection.servico,
     initialStaffId: selection.profissional,
   };

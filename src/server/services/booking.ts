@@ -1,7 +1,9 @@
 import type { AvailableSlot } from "@/server/services/availability";
 
+export type BookingErrorCode = "SLOT_CONFLICT" | "RESOURCE_NOT_FOUND" | "INVALID_SERVICES" | "OUTSIDE_WINDOW";
+
 export class BookingError extends Error {
-  constructor(public readonly code: "SLOT_CONFLICT" | "RESOURCE_NOT_FOUND" | "PAYMENT_FAILED") {
+  constructor(public readonly code: BookingErrorCode) {
     super(code);
   }
 }

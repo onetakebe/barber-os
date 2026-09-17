@@ -1,25 +1,34 @@
+import "dotenv/config";
+
 import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
+import { Client } from "pg";
 
-async function signInQuick(page: Page, account: "Proprietário" | "Recepção" | "Profissional") {
+// Contas demo do seed, também presentes no Supabase Auth com a senha do seed (script de migração).
+const accounts = { Proprietário: "owner@asbarber.be", Recepção: "recepcao@asbarber.be", Profissional: "lucas@asbarber.be" } as const;
+
+async function signInQuick(page: Page, account: keyof typeof accounts) {
   await page.goto("/login");
-  await page.getByRole("button", { name: account }).click();
+  await page.getByLabel("E-mail").fill(accounts[account]);
+  await page.getByLabel("Senha").fill("demo123");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await expect(page).toHaveURL(/\/painel$/);
 }
 
 test("public barbershop presents the commercial experience without horizontal overflow", async ({ page }) => {
   await mkdir("artifacts", { recursive: true });
   await page.goto("/barbearia/as-barber-club");
-  await expect(page.getByRole("heading", { name: /Corte\. Presença\. Ritual\./ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Seu estilo, bem cuidado\./ })).toBeVisible();
+  // Copy de 14/09: promessa concreta no hero, preço sem surpresa nos serviços.
+  await expect(page.getByRole("heading", { name: /Seu barbeiro,\s*na sua hora\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Serviços e preços\. Sem surpresa\./ })).toBeVisible();
   await expect(page.getByRole("link", { name: /Agendar/ }).first()).toHaveAttribute("href", "/barbearia/as-barber-club/agendar");
   await expect(page.locator("html")).toHaveJSProperty("scrollWidth", await page.locator("html").evaluate((element) => element.clientWidth));
   await page.screenshot({ path: "artifacts/barbershop-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole("heading", { name: /Corte\. Presença\. Ritual\./ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Seu barbeiro,\s*na sua hora\./ })).toBeVisible();
   const viewportWidth = await page.locator("html").evaluate((element) => element.clientWidth);
   const documentWidth = await page.locator("html").evaluate((element) => element.scrollWidth);
   expect(documentWidth).toBe(viewportWidth);
@@ -29,25 +38,123 @@ test("public barbershop presents the commercial experience without horizontal ov
 test("owner signs in and sees the live dashboard", async ({ page }) => {
   await signInQuick(page, "Proprietário");
   await expect(page.getByRole("heading", { name: /Olá, Alexandre/ })).toBeVisible();
-  await expect(page.getByText("Impacto registrado")).toBeVisible();
-  await expect(page.getByText("Dados do tenant em tempo real")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agenda de hoje" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Próximos horários" })).toBeVisible();
 });
 
-test("customer completes a persisted booking and simulated deposit flow", async ({ page }) => {
+/** Lê o agendamento gravado pelo wizard direto no Postgres local (o E2E sobe contra ele). A
+ *  tela de sucesso não basta como prova: o que importa é o que ficou no banco. */
+async function readPersistedBooking(code: string) {
+  const client = new Client({ connectionString: process.env.LOCAL_DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query("SELECT set_config('app.bypass_rls', 'on', false)");
+    const appointments = await client.query<{ id: string; status: string; totalCents: number; depositCents: number; minutes: number }>(
+      'SELECT id, status, "totalCents", "depositCents", EXTRACT(EPOCH FROM ("endsAt" - "startsAt")) / 60 AS minutes FROM "Appointment" WHERE id LIKE $1',
+      [`${code}%`],
+    );
+    const items = appointments.rows[0]
+      ? await client.query<{ priceCents: number; durationMinutes: number }>('SELECT "priceCents", "durationMinutes" FROM "AppointmentService" WHERE "appointmentId" = $1', [appointments.rows[0].id])
+      : { rows: [] };
+    return { appointments: appointments.rows, items: items.rows };
+  } finally {
+    await client.end();
+  }
+}
+
+test("customer toggles three services, picks the time on the wheel and persists two in one appointment without an online deposit", async ({ page }) => {
+  // Viewport de celular: a roda de horário precisa funcionar com rolagem e toque, não só com clique.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/barbearia/as-barber-club/agendar");
-  await page.getByRole("button", { name: /Continuar/ }).click();
-  await page.getByRole("button", { name: /Continuar/ }).click();
-  await expect(page.getByText("Horários disponíveis")).toBeVisible();
-  await expect(page.locator("button.font-mono").first()).toBeVisible();
-  await page.getByRole("button", { name: /Continuar/ }).click();
+  await expect(page.getByText("Passo 1 de 3")).toBeVisible();
+  // Só o nome exato do card: a descrição do combo também cita "Barba Premium".
+  const serviceCard = (name: string) => page.getByRole("button").filter({ has: page.getByText(name, { exact: true }) });
+  const total = page.getByText("Total, pago na barbearia").locator("xpath=..");
+  const continueButton = page.getByRole("button", { name: /Continuar/ });
+
+  // Seleção vazia não avança.
+  await expect(continueButton).toBeDisabled();
+  // Seed: Barba Premium 30 min / 24,00 · Sobrancelha 15 min / 12,00 · Corte Máquina 30 min / 22,00.
+  await serviceCard("Barba Premium").click();
+  await serviceCard("Sobrancelha").click();
+  await serviceCard("Corte Máquina").click();
+  await expect(serviceCard("Barba Premium")).toHaveAttribute("aria-pressed", "true");
+  await expect(serviceCard("Corte Máquina")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("75 min no total")).toBeVisible();
+  await expect(total).toContainText("58,00");
+
+  // Remover um card recalcula os totais.
+  await serviceCard("Corte Máquina").click();
+  await expect(serviceCard("Corte Máquina")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("45 min no total")).toBeVisible();
+  await expect(total).toContainText("36,00");
+
+  await continueButton.click();
+  await expect(page.getByText(/^Horário/)).toBeVisible();
+  // Próximo mês: um dia inteiro da jornada do seed (09–19h, pausa 13–14h; sábado até 18h), sem o
+  // corte por "agora" e sem os agendamentos do seed (todos em ±1 dia).
+  await page.getByRole("button", { name: "Próximo mês" }).click();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Brussels", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString().slice(0, 7);
+  await expect(page.locator('input[name="date"]')).toHaveValue(new RegExp(`^${nextMonth}-`));
+  await expect(page.getByRole("group", { name: "Horário" })).toHaveAttribute("aria-busy", "false");
+  const hours = page.getByRole("listbox", { name: "Hora" });
+  const minutes = page.getByRole("listbox", { name: "Minuto" });
+  const time = page.locator('input[name="time"]');
+  await expect(hours.getByRole("option", { selected: true })).toHaveText("09");
+  await expect(time).toHaveValue("09:00");
+  // Hora sem nenhum horário fica visível e bloqueada: a pausa do almoço vale para toda a equipe.
+  await expect(hours.getByRole("option", { name: "13" })).toHaveAttribute("aria-disabled", "true");
+  // `dispatchEvent`: o Playwright recusaria clicar numa opção `aria-disabled` e, para clicar, rolaria
+  // a hora 13 para dentro da roda (o que já mudaria a seleção). A prova é a roda ignorar o clique.
+  await hours.getByRole("option", { name: "13" }).dispatchEvent("click");
+  await expect(time).toHaveValue("09:00");
+
+  // Toque: arrastar a roda uma linha (gesto de toque real do Chromium); a linha que para no centro vira seleção.
+  const box = (await hours.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.synthesizeScrollGesture", { x: box.x + box.width / 2, y: box.y + box.height / 2, yDistance: -40, gestureSourceType: "touch", speed: 400 });
+  await expect(time).toHaveValue("10:00");
+  await minutes.getByRole("option", { name: "15" }).click();
+  await expect(time).toHaveValue("10:15");
+
+  // Teclado: End vai à última hora com horário; o minuto 15 continua válido e é mantido.
+  await hours.focus();
+  await page.keyboard.press("End");
+  await expect(time).toHaveValue(/^1[78]:15$/);
+  const chosenTime = await time.inputValue();
+  // 45 min a partir de xx:30 passaria do fim da jornada: minuto visível, bloqueado, e o clique não seleciona.
+  await expect(minutes.getByRole("option", { name: "30" })).toHaveAttribute("aria-disabled", "true");
+  await minutes.getByRole("option", { name: "30" }).click({ force: true });
+  await expect(time).toHaveValue(chosenTime);
+  await expect(hours.getByRole("option", { selected: true })).toHaveText(chosenTime.slice(0, 2));
+
+  await continueButton.click();
+  await expect(page.getByText("Passo 3 de 3")).toBeVisible();
+  await expect(page.getByText(`às ${chosenTime}`, { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Barba Premium + Sobrancelha", { exact: false }).first()).toBeVisible();
   await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Cliente");
   await page.getByLabel("Sobrenome").fill("Playwright");
   await page.getByLabel("E-mail").fill("playwright@example.com");
   await page.getByLabel("Telefone").fill("+32 470 99 88 77");
-  await page.getByRole("button", { name: /Continuar/ }).click();
-  await page.getByRole("button", { name: /Pagar/ }).click();
+  await page.getByRole("button", { name: /Confirmar reserva/ }).click();
   await expect(page.getByRole("heading", { name: "Sua cadeira está reservada." })).toBeVisible();
-  await expect(page.getByText("Sinal simulado pago")).toBeVisible();
+  // O instante gravado, lido de volta pelo app no fuso da barbearia, é o horário escolhido na roda.
+  await expect(page.getByText(`, ${chosenTime} com `, { exact: false })).toBeVisible();
+  await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
+  await expect(page.getByText("Nada foi cobrado agora", { exact: false })).toBeVisible();
+  await expect(page.getByText("Barba Premium", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sobrancelha", { exact: true })).toBeVisible();
+  await expect(page.getByText("45 min", { exact: false }).first()).toBeVisible();
+
+  const code = (await page.getByText(/Código [0-9a-z]{8}/).textContent())?.match(/Código ([0-9a-z]{8})/)?.[1];
+  expect(code).toBeTruthy();
+  const persisted = await readPersistedBooking(code!);
+  expect(persisted.appointments).toHaveLength(1);
+  expect(persisted.appointments[0]).toMatchObject({ status: "CONFIRMED", totalCents: 3600, depositCents: 0 });
+  expect(Number(persisted.appointments[0]?.minutes)).toBe(45);
+  expect(persisted.items).toHaveLength(2);
+  expect(persisted.items.map((item) => [item.priceCents, item.durationMinutes]).sort()).toEqual([[1200, 15], [2400, 30]]);
 });
 
 test("owner creates a customer and the record survives reload", async ({ page }) => {

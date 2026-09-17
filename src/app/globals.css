@@ -208,6 +208,67 @@
   place-items: center;
 }
 
+/* Cards de escolha do wizard (13/09). Três níveis, todos opacos: o comum é uma
+   superfície elevada com luz de topo; o destaque (combo) e o selecionado quebram o
+   padrão com degradê. Nessa tela não há hero, então o selecionado É o hero em degradê. */
+.choice-card {
+  background: var(--surface-raised);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.choice-card:hover {
+  border-color: rgb(255 255 255 / 18%);
+}
+
+.choice-card--featured {
+  background: linear-gradient(150deg, color-mix(in srgb, var(--brand) 18%, var(--surface-raised)) 0%, var(--surface-raised) 55%, var(--surface-panel) 100%);
+  border-color: color-mix(in srgb, var(--brand) 28%, transparent);
+}
+
+/* `--accent` é a versão estática (card de indicador) do selecionado: mesmo degradê do
+   acento, para o único card mais relevante de uma tela que não tem hero. */
+.choice-card[aria-pressed="true"],
+.choice-card--accent {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 28%), 0 22px 56px -30px rgb(255 140 66 / 60%);
+  color: var(--brand-ink);
+}
+
+.choice-card[aria-pressed="true"] .icon-tile,
+.choice-card--accent .icon-tile {
+  background: rgb(26 13 6 / 14%);
+  border-color: rgb(26 13 6 / 18%);
+  color: var(--brand-ink);
+}
+
+/* Texto secundário e chips trocam de tom junto com o card. */
+.choice-muted {
+  color: var(--muted-foreground);
+}
+
+.choice-chip {
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 999px;
+  color: var(--foreground);
+}
+
+.choice-card[aria-pressed="true"] .choice-muted,
+.choice-card--accent .choice-muted {
+  color: rgb(26 13 6 / 74%);
+}
+
+.choice-card[aria-pressed="true"] .choice-chip,
+.choice-card--accent .choice-chip {
+  background: rgb(26 13 6 / 12%);
+  border-color: rgb(26 13 6 / 16%);
+  color: var(--brand-ink);
+}
+
 .dashboard-card {
   border: 1px solid rgb(255 255 255 / 9%);
   border-radius: 18px;
@@ -240,6 +301,24 @@
     pointer-events: none;
     position: absolute;
     z-index: 2;
+  }
+
+  /* Hero com vídeo que rola junto com a página (ver components/scrub-hero.tsx).
+     `--scrub` (0–1) e `data-stage` (start | mid | end) vêm do JS. Os frames nítidos
+     cobrem o vídeo nas extremidades; no meio ficam transparentes e o vídeo aparece. */
+  .scrub-hero__frame {
+    opacity: 0;
+    transition: opacity 240ms ease-out;
+    z-index: 1;
+  }
+  .scrub-hero[data-stage="start"] .scrub-hero__frame--start,
+  .scrub-hero[data-stage="end"] .scrub-hero__frame--end {
+    opacity: 1;
+  }
+  .scrub-hero__progress {
+    height: 100%;
+    transform: scaleY(var(--scrub, 0));
+    transform-origin: top;
   }
 
   /* Profundidade sem sombra solta: luz de topo por dentro + assentamento suave.

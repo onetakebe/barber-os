@@ -28,7 +28,8 @@ export type ModuleData = {
   columns: readonly string[];
   action: string;
   rows: { id: string; cells: string[]; avatars?: Record<number, RowAvatar>; edit?: Record<string, string | number> }[];
-  stats: { label: string; value: string }[];
+  /** `hint` diz o que o número é, com dado real quando houver — nunca um número solto. */
+  stats: { label: string; value: string; hint?: string }[];
 };
 
 const euro = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "EUR" }).format(cents / 100);
@@ -62,7 +63,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       cells: [dateTime(item.startsAt, tenant.timezone), `${item.customer.firstName} ${item.customer.lastName}`, item.services.map((service) => service.service.name).join(", "), item.staff.displayName, item.status],
       avatars: { 3: { imageUrl: item.staff.imageUrl, initials: initialsOf(item.staff.displayName), color: item.staff.color } },
     }));
-    stats = [{ label: "Total", value: integer(appointmentCount) }, { label: "Confirmados", value: integer(confirmed) }, { label: "Concluídos", value: integer(completed) }];
+    stats = [{ label: "Total", value: integer(appointmentCount), hint: "reservas registradas até hoje" }, { label: "Confirmados", value: integer(confirmed), hint: "aguardando o atendimento" }, { label: "Concluídos", value: integer(completed), hint: "atendimentos já feitos" }];
   }
 
   if (module === "clientes") {
@@ -73,7 +74,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       cells: [`${item.firstName} ${item.lastName}`, item.email ?? item.phone, integer(item._count.appointments), euro(item.totalSpentCents), item.status],
       edit: { firstName: item.firstName, lastName: item.lastName, email: item.email ?? "", phone: item.phone },
     }));
-    stats = [{ label: "Clientes ativos", value: integer(customerCount) }, { label: "Com histórico", value: integer(customers.filter((item) => item._count.appointments > 0).length) }, { label: "Valor registrado", value: euro(totalSpent) }];
+    stats = [{ label: "Clientes ativos", value: integer(customerCount), hint: "cadastrados na barbearia" }, { label: "Com histórico", value: integer(customers.filter((item) => item._count.appointments > 0).length), hint: `já passaram pela cadeira, entre os ${integer(customers.length)} mais recentes` }, { label: "Valor registrado", value: euro(totalSpent), hint: "soma do que esses clientes gastaram" }];
   }
 
   if (module === "equipe") {
@@ -84,7 +85,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       avatars: { 0: { imageUrl: item.imageUrl, initials: initialsOf(item.displayName), color: item.color } },
       edit: { displayName: item.displayName, title: item.title ?? "", commissionPercent: item.commissionBps / 100, imageUrl: item.imageUrl ?? "" },
     }));
-    stats = [{ label: "Profissionais", value: integer(staff.length) }, { label: "Disponíveis online", value: integer(staff.filter((item) => item.isBookable).length) }, { label: "Reservas vinculadas", value: integer(staff.reduce((sum, item) => sum + item._count.appointments, 0)) }];
+    stats = [{ label: "Profissionais", value: integer(staff.length), hint: "na equipe" }, { label: "Disponíveis online", value: integer(staff.filter((item) => item.isBookable).length), hint: "aparecem na reserva pública" }, { label: "Reservas vinculadas", value: integer(staff.reduce((sum, item) => sum + item._count.appointments, 0)), hint: "atendidas por toda a equipe" }];
   }
 
   if (module === "servicos") {
@@ -94,7 +95,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       cells: [item.name, item.category.name, `${item.durationMinutes} min`, euro(item.priceCents), item.isActive ? "Ativo" : "Inativo"],
       edit: { name: item.name, description: item.description ?? "", price: item.priceCents / 100, durationMinutes: item.durationMinutes },
     }));
-    stats = [{ label: "Serviços", value: integer(services.length) }, { label: "Ativos", value: integer(services.filter((item) => item.isActive).length) }, { label: "Preço médio", value: euro(services.length ? Math.round(services.reduce((sum, item) => sum + item.priceCents, 0) / services.length) : 0) }];
+    stats = [{ label: "Serviços", value: integer(services.length), hint: "no catálogo" }, { label: "Ativos", value: integer(services.filter((item) => item.isActive).length), hint: "visíveis para reserva" }, { label: "Preço médio", value: euro(services.length ? Math.round(services.reduce((sum, item) => sum + item.priceCents, 0) / services.length) : 0), hint: "entre os serviços cadastrados" }];
   }
 
   if (module === "produtos") {
@@ -104,13 +105,13 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       cells: [item.name, item.sku, euro(item.priceCents), integer(item.stock), item.stock <= item.minimumStock ? "Estoque baixo" : "Em dia"],
       edit: { name: item.name, sku: item.sku, category: item.category, price: item.priceCents / 100, cost: item.costCents / 100, stock: item.stock, minimumStock: item.minimumStock },
     }));
-    stats = [{ label: "Produtos", value: integer(products.length) }, { label: "Unidades em estoque", value: integer(products.reduce((sum, item) => sum + item.stock, 0)) }, { label: "Alertas", value: integer(products.filter((item) => item.stock <= item.minimumStock).length) }];
+    stats = [{ label: "Produtos", value: integer(products.length), hint: "cadastrados" }, { label: "Unidades em estoque", value: integer(products.reduce((sum, item) => sum + item.stock, 0)), hint: "somando todos os produtos" }, { label: "Alertas", value: integer(products.filter((item) => item.stock <= item.minimumStock).length), hint: "abaixo do estoque mínimo" }];
   }
 
   if (module === "campanhas") {
     const campaigns = await db.campaign.findMany({ where: { tenantId }, orderBy: { createdAt: "desc" }, include: { deliveries: true } });
     rows = campaigns.map((item) => ({ id: item.id, cells: [item.name, item.audienceSegment, integer(item.deliveries.length), integer(item.deliveries.filter((delivery) => delivery.convertedAt).length), euro(item.deliveries.reduce((sum, delivery) => sum + delivery.revenueCents, 0))] }));
-    stats = [{ label: "Campanhas", value: integer(campaigns.length) }, { label: "Ativas", value: integer(campaigns.filter((item) => item.status === "ACTIVE").length) }, { label: "Receita atribuída", value: euro(campaigns.flatMap((item) => item.deliveries).reduce((sum, item) => sum + item.revenueCents, 0)) }];
+    stats = [{ label: "Campanhas", value: integer(campaigns.length), hint: "criadas" }, { label: "Ativas", value: integer(campaigns.filter((item) => item.status === "ACTIVE").length), hint: "em andamento agora" }, { label: "Receita atribuída", value: euro(campaigns.flatMap((item) => item.deliveries).reduce((sum, item) => sum + item.revenueCents, 0)), hint: "vendas ligadas a campanhas" }];
   }
 
   if (module === "fidelidade") {
@@ -120,7 +121,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       db.loyaltyTransaction.count({ where: { tenantId } }),
     ]);
     rows = customers.map((item) => ({ id: item.id, cells: [`${item.firstName} ${item.lastName}`, integer(item.loyaltyPoints), integer(item._count.loyaltyTransactions), euro(item.totalSpentCents), dateOnly(item.lastVisitAt, tenant.timezone)] }));
-    stats = [{ label: "Participantes", value: integer(customers.length) }, { label: "Recompensas", value: integer(rewardCount) }, { label: "Movimentos", value: integer(transactionCount) }];
+    stats = [{ label: "Participantes", value: integer(customers.length), hint: "clientes no programa de pontos" }, { label: "Recompensas", value: integer(rewardCount), hint: "ativas para resgate" }, { label: "Movimentos", value: integer(transactionCount), hint: "pontos ganhos e resgatados" }];
   }
 
   if (module === "financeiro" || module === "relatorios") {
@@ -142,7 +143,7 @@ export async function getModuleData(module: ModuleSlug, tenantId: string, profes
       const ticket = completed._count ? Math.round(serviceRevenue / completed._count) : 0;
       rows = [{ id: "revenue", cells: ["Receita operacional", euro(revenue), `${completed._count + sales._count} lançamentos`, "Todos os dados", "Atualizado"] }, { id: "ticket", cells: ["Ticket médio de serviços", euro(ticket), `${completed._count} atendimentos`, "Todos os dados", "Atualizado"] }, { id: "customers", cells: ["Clientes cadastrados", integer(customerCount), `${appointmentCount} reservas`, "Todos os dados", "Atualizado"] }, { id: "balance", cells: ["Saldo básico", euro(balance), `${expenses._count} despesas`, "Todos os dados", "Atualizado"] }];
     }
-    stats = [{ label: "Receita", value: euro(revenue) }, { label: "Despesas", value: euro(expenseTotal) }, { label: "Saldo básico", value: euro(balance) }];
+    stats = [{ label: "Receita", value: euro(revenue), hint: `${integer(completed._count)} atendimentos e ${integer(sales._count)} vendas` }, { label: "Despesas", value: euro(expenseTotal), hint: `${integer(expenses._count)} lançamentos` }, { label: "Saldo básico", value: euro(balance), hint: "receita menos despesas" }];
   }
 
   return { ...meta, rows, stats };

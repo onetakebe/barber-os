@@ -1,14 +1,29 @@
-import { adminDb, tenantDb } from "@/server/db";
-import { getAvailableSlotsFromRecords, localDateTimeToUtc } from "@/server/services/availability";
+import { adminDb, tenantDb, type ScopedDb } from "@/server/db";
+import { addDays, getAvailableSlotsFromRecords, getBookableDaysFromRecords, localDateInZone, localDateTimeToUtc } from "@/server/services/availability";
+import { normalizeServiceIds, resolveBookingServices, type ServiceSelection } from "@/server/services/booking-services";
 
 const activeStatuses = ["PENDING", "CONFIRMED", "CHECKED_IN", "IN_PROGRESS"] as const;
+const SLOT_INTERVAL_MINUTES = 15;
+/** Janela da reserva pública: hoje + 60 dias (decisão de 13/09). */
+export const BOOKING_HORIZON_DAYS = 60;
 
 function nextDate(date: string) {
-  const value = new Date(`${date}T12:00:00.000Z`);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
+  return addDays(date, 1);
 }
 
+function nextMonth(month: string) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return `${monthIndex === 12 ? year + 1 : year}-${String(monthIndex === 12 ? 1 : monthIndex + 1).padStart(2, "0")}`;
+}
+
+/** Faixa do calendário público no fuso do tenant: primeiro e último dia marcáveis e os meses que os contêm. */
+export function getBookingWindow(timezone: string, now = new Date()) {
+  const today = localDateInZone(now, timezone);
+  const last = addDays(today, BOOKING_HORIZON_DAYS);
+  return { today, last, firstMonth: today.slice(0, 7), lastMonth: last.slice(0, 7) };
+}
+
+/** Só a agenda interna usa esta faixa curta (chips de 7 dias). A reserva pública usa o calendário de mês. */
 export function getBookableDates(timezone: string, now = new Date()) {
   return Array.from({ length: 8 }, (_, index) => {
     const date = new Date(now.getTime() + (index + 1) * 86_400_000);
@@ -37,7 +52,7 @@ export async function getPublicBookingCatalog(slug: string) {
       services: {
         where: { isActive: true, deletedAt: null },
         orderBy: [{ category: { sortOrder: "asc" } }, { name: "asc" }],
-        select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true, depositRequired: true },
+        select: { id: true, name: true, description: true, priceCents: true, durationMinutes: true, depositRequired: true, isCombo: true },
       },
       staff: {
         where: { isBookable: true, deletedAt: null },
@@ -79,37 +94,84 @@ export async function getPublicBookingCatalog(slug: string) {
   };
 }
 
-/** Núcleo da disponibilidade, por tenant. A reserva pública chega por slug; o painel já tem o
- *  tenantId da sessão e não deve pagar uma consulta a mais nem duplicar a regra. */
-export async function getAvailabilityForTenant(input: { tenantId: string; timezone: string; date: string; serviceId: string; staffId?: string }) {
-  const db = tenantDb(input.tenantId);
-  const service = await db.service.findFirst({ where: { id: input.serviceId, tenantId: input.tenantId, isActive: true, deletedAt: null }, select: { id: true, durationMinutes: true } });
-  if (!service) return null;
-
-  const startsAt = localDateTimeToUtc(input.date, "00:00", input.timezone);
-  const endsAt = localDateTimeToUtc(nextDate(input.date), "00:00", input.timezone);
-  const staff = await db.staff.findMany({
+/** Jornada, bloqueios e agendamentos ativos dos profissionais elegíveis num intervalo — base
+ *  tanto dos horários de um dia quanto dos dias de um mês. Elegível é quem tem uma relação
+ *  `StaffService` para **cada** serviço escolhido: um `some ... in serviceIds` aceitaria barbeiro
+ *  habilitado só em parte da lista. */
+async function loadStaffRecords(db: ScopedDb, input: { tenantId: string; serviceIds: string[]; staffId?: string; startsAt: Date; endsAt: Date }) {
+  return db.staff.findMany({
     where: {
       tenantId: input.tenantId,
       deletedAt: null,
       isBookable: true,
       ...(input.staffId && input.staffId !== "any" ? { id: input.staffId } : {}),
-      services: { some: { tenantId: input.tenantId, serviceId: service.id } },
+      AND: input.serviceIds.map((serviceId) => ({ services: { some: { tenantId: input.tenantId, serviceId } } })),
     },
     select: {
       id: true,
       availability: { where: { tenantId: input.tenantId }, select: { dayOfWeek: true, startMinute: true, endMinute: true, breakStartMinute: true, breakEndMinute: true } },
-      timeOff: { where: { tenantId: input.tenantId, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
-      appointments: { where: { tenantId: input.tenantId, deletedAt: null, status: { in: [...activeStatuses] }, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } }, select: { startsAt: true, endsAt: true } },
+      timeOff: { where: { tenantId: input.tenantId, startsAt: { lt: input.endsAt }, endsAt: { gt: input.startsAt } }, select: { startsAt: true, endsAt: true } },
+      appointments: { where: { tenantId: input.tenantId, deletedAt: null, status: { in: [...activeStatuses] }, startsAt: { lt: input.endsAt }, endsAt: { gt: input.startsAt } }, select: { startsAt: true, endsAt: true } },
     },
   });
-
-  const slots = getAvailableSlotsFromRecords({ date: input.date, timezone: input.timezone, durationMinutes: service.durationMinutes, intervalMinutes: 15, staff }).filter((slot) => slot.staffIds.length > 0);
-  return { tenantId: input.tenantId, serviceId: service.id, timezone: input.timezone, slots };
 }
 
-export async function getPublicAvailability(input: { slug: string; date: string; serviceId: string; staffId?: string }) {
+/** Núcleo da disponibilidade, por tenant. A reserva pública chega por slug; o painel já tem o
+ *  tenantId da sessão e não deve pagar uma consulta a mais nem duplicar a regra.
+ *  Vários serviços = um barbeiro habilitado em todos, com a duração somada. Seleção inválida
+ *  lança `BookingError` (lista vazia/repetida ou serviço que não existe nesta barbearia).
+ *  `now` corta horários já começados — só a reserva pública passa; o painel pode registrar um
+ *  atendimento de hoje que já começou. */
+export async function getAvailabilityForTenant(input: ServiceSelection & { tenantId: string; timezone: string; date: string; staffId?: string; now?: Date }) {
+  const db = tenantDb(input.tenantId);
+  const services = await resolveBookingServices(db, input.tenantId, normalizeServiceIds(input));
+  const serviceIds = services.items.map((item) => item.id);
+
+  const startsAt = localDateTimeToUtc(input.date, "00:00", input.timezone);
+  const endsAt = localDateTimeToUtc(nextDate(input.date), "00:00", input.timezone);
+  const staff = await loadStaffRecords(db, { tenantId: input.tenantId, serviceIds, staffId: input.staffId, startsAt, endsAt });
+
+  const slots = getAvailableSlotsFromRecords({ date: input.date, timezone: input.timezone, durationMinutes: services.durationMinutes, intervalMinutes: SLOT_INTERVAL_MINUTES, staff, now: input.now }).filter((slot) => slot.staffIds.length > 0);
+  // `services` vai junto: quem reserva já tem itens, duração e total sem consultar de novo.
+  return { tenantId: input.tenantId, timezone: input.timezone, services, slots };
+}
+
+/** Dias de um mês (YYYY-MM) com pelo menos um horário livre — uma consulta para o mês inteiro. */
+export async function getBookableDaysForTenant(input: ServiceSelection & { tenantId: string; timezone: string; month: string; staffId?: string; now?: Date }) {
+  const db = tenantDb(input.tenantId);
+  const services = await resolveBookingServices(db, input.tenantId, normalizeServiceIds(input));
+  const serviceIds = services.items.map((item) => item.id);
+
+  const startsAt = localDateTimeToUtc(`${input.month}-01`, "00:00", input.timezone);
+  const endsAt = localDateTimeToUtc(`${nextMonth(input.month)}-01`, "00:00", input.timezone);
+  const staff = await loadStaffRecords(db, { tenantId: input.tenantId, serviceIds, staffId: input.staffId, startsAt, endsAt });
+
+  const days = getBookableDaysFromRecords({ month: input.month, timezone: input.timezone, now: input.now ?? new Date(), horizonDays: BOOKING_HORIZON_DAYS, durationMinutes: services.durationMinutes, intervalMinutes: SLOT_INTERVAL_MINUTES, staff });
+  return { tenantId: input.tenantId, timezone: input.timezone, services, days };
+}
+
+export async function getPublicAvailability(input: ServiceSelection & { slug: string; date: string; staffId?: string; includeStarted?: boolean }) {
   const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true } });
   if (!tenant) return null;
-  return getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceId: input.serviceId, staffId: input.staffId });
+  return getAvailabilityForTenant({ tenantId: tenant.id, timezone: tenant.timezone, date: input.date, serviceIds: normalizeServiceIds(input), staffId: input.staffId, now: input.includeStarted ? undefined : new Date() });
+}
+
+export async function getPublicBookableDays(input: ServiceSelection & { slug: string; month: string; staffId?: string }) {
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, timezone: true } });
+  if (!tenant) return null;
+  return getBookableDaysForTenant({ tenantId: tenant.id, timezone: tenant.timezone, month: input.month, serviceIds: normalizeServiceIds(input), staffId: input.staffId });
+}
+
+/** Primeiro horário livre dentro da janela pública (hero da página da barbearia). */
+export async function getNextPublicSlot(input: { tenantId: string; timezone: string; serviceId: string }) {
+  const window = getBookingWindow(input.timezone);
+  for (let month = window.firstMonth; month <= window.lastMonth; month = nextMonth(month)) {
+    const result = await getBookableDaysForTenant({ tenantId: input.tenantId, timezone: input.timezone, month, serviceIds: [input.serviceId], staffId: "any" });
+    const day = result.days.find((item) => item.available);
+    if (!day) continue;
+    const availability = await getAvailabilityForTenant({ tenantId: input.tenantId, timezone: input.timezone, date: day.date, serviceIds: [input.serviceId], staffId: "any", now: new Date() });
+    const slot = availability.slots[0];
+    if (slot) return { date: day.date, time: slot.time };
+  }
+  return null;
 }
