@@ -211,7 +211,8 @@ describe("máquina de estados da fila", () => {
       expect(updated).toMatchObject({ status: "QUEUED", attempts: index + 1, lastError: "rate_limit_exceeded" });
       expect(updated?.nextAttemptAt?.getTime()).toBe(now.getTime() + minutes * 60_000);
     }
-    // Quinta falha esgota as tentativas.
+    // Quinta falha esgota as tentativas (prazo vencido, como listPending devolveria).
+    rows[0]!.nextAttemptAt = null;
     await expect(dispatchNotification("n1", { store, providers: enabled(provider), now })).resolves.toBe("FAILED");
     expect(rows[0]).toMatchObject({ status: "FAILED", attempts: MAX_ATTEMPTS, nextAttemptAt: null });
   });
