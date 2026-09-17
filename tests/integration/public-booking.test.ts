@@ -110,7 +110,7 @@ describe.sequential("reserva pública com vários serviços", () => {
 
   describe("createPublicBooking", () => {
     it("grava um agendamento com três itens, 60 minutos e 5.000 centavos, sem cobrar", async () => {
-      const booking = await createPublicBooking({ slug, serviceIds: all(), staffId: "any", date, time: "10:00", firstName: "Cliente", lastName: "Teste", phone: "+32 470 11 22 33" });
+      const booking = await createPublicBooking({ slug, serviceIds: all(), staffId: "any", date, time: "10:00", firstName: "Cliente", lastName: "Teste", email: "cliente@exemplo.com", phone: "+32 470 11 22 33" });
       expect(booking).not.toHaveProperty("depositCents");
       expect(booking).not.toHaveProperty("serviceName");
       expect(booking.services.map((item) => item.name)).toEqual(["Corte", "Barba", "Sobrancelha"]);
@@ -137,7 +137,7 @@ describe.sequential("reserva pública com vários serviços", () => {
     });
 
     it("rejeita profissional forçado sem habilitação, serviço de outra barbearia e lista repetida", async () => {
-      const base = { slug, date, time: "13:00", firstName: "Cliente", lastName: "Teste", phone: "+32 470 44 55 66" };
+      const base = { slug, date, time: "13:00", firstName: "Cliente", lastName: "Teste", email: "cliente@exemplo.com", phone: "+32 470 44 55 66" };
       await expect(createPublicBooking({ ...base, serviceIds: all(), staffId: partialStaffId })).rejects.toThrow(new BookingError("SLOT_CONFLICT"));
       await expect(createPublicBooking({ ...base, serviceIds: [services.corte, otherServiceId], staffId: "any" })).rejects.toThrow(new BookingError("RESOURCE_NOT_FOUND"));
       await expect(createPublicBooking({ ...base, serviceIds: [services.corte, services.corte], staffId: "any" })).rejects.toThrow(new BookingError("INVALID_SERVICES"));
@@ -145,7 +145,7 @@ describe.sequential("reserva pública com vários serviços", () => {
     });
 
     it("rejeita dia fora da janela pública (passado ou além de hoje + 60)", async () => {
-      const base = { slug, serviceIds: [services.corte], staffId: "any", time: "13:00", firstName: "Cliente", lastName: "Teste", phone: "+32 470 44 55 66" };
+      const base = { slug, serviceIds: [services.corte], staffId: "any", time: "13:00", firstName: "Cliente", lastName: "Teste", email: "cliente@exemplo.com", phone: "+32 470 44 55 66" };
       await expect(createPublicBooking({ ...base, date: dateAfter(-1) })).rejects.toThrow(new BookingError("OUTSIDE_WINDOW"));
       await expect(createPublicBooking({ ...base, date: dateAfter(62) })).rejects.toThrow(new BookingError("OUTSIDE_WINDOW"));
     });
@@ -154,8 +154,8 @@ describe.sequential("reserva pública com vários serviços", () => {
       const concurrentDate = dateAfter(21);
       const base = { slug, serviceIds: [services.corte, services.barba], staffId: fullStaffId, date: concurrentDate, time: "11:00" };
       const results = await Promise.allSettled([
-        createPublicBooking({ ...base, firstName: "Primeiro", lastName: "Cliente", phone: "+32 470 70 00 01" }),
-        createPublicBooking({ ...base, firstName: "Segundo", lastName: "Cliente", phone: "+32 470 70 00 02" }),
+        createPublicBooking({ ...base, firstName: "Primeiro", lastName: "Cliente", email: "primeiro@exemplo.com", phone: "+32 470 70 00 01" }),
+        createPublicBooking({ ...base, firstName: "Segundo", lastName: "Cliente", email: "segundo@exemplo.com", phone: "+32 470 70 00 02" }),
       ]);
       const fulfilled = results.filter((result) => result.status === "fulfilled");
       const rejected = results.filter((result) => result.status === "rejected");

@@ -20,5 +20,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|images|favicon.ico|api/public).*)"],
+  // `api/internal` autentica por segredo próprio: não há sessão para renovar.
+  matcher: ["/((?!_next/static|_next/image|images|favicon.ico|api/public|api/internal).*)"],
 };
