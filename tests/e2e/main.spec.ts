@@ -62,7 +62,9 @@ async function readPersistedBooking(code: string) {
   }
 }
 
-test("customer toggles three services and persists two in one appointment without an online deposit", async ({ page }) => {
+test("customer toggles three services, picks the time on the wheel and persists two in one appointment without an online deposit", async ({ page }) => {
+  // Viewport de celular: a roda de horário precisa funcionar com rolagem e toque, não só com clique.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/barbearia/as-barber-club/agendar");
   await expect(page.getByText("Passo 1 de 3")).toBeVisible();
   // Só o nome exato do card: a descrição do combo também cita "Barba Premium".
@@ -88,11 +90,48 @@ test("customer toggles three services and persists two in one appointment withou
   await expect(total).toContainText("36,00");
 
   await continueButton.click();
-  await expect(page.getByText(/Horários disponíveis/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Próximo mês" })).toBeVisible();
-  await expect(page.locator("button.font-mono[data-state]").first()).toBeVisible();
+  await expect(page.getByText(/^Horário/)).toBeVisible();
+  // Próximo mês: um dia inteiro da jornada do seed (09–19h, pausa 13–14h; sábado até 18h), sem o
+  // corte por "agora" e sem os agendamentos do seed (todos em ±1 dia).
+  await page.getByRole("button", { name: "Próximo mês" }).click();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Brussels", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const nextMonth = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 1)).toISOString().slice(0, 7);
+  await expect(page.locator('input[name="date"]')).toHaveValue(new RegExp(`^${nextMonth}-`));
+  await expect(page.getByRole("group", { name: "Horário" })).toHaveAttribute("aria-busy", "false");
+  const hours = page.getByRole("listbox", { name: "Hora" });
+  const minutes = page.getByRole("listbox", { name: "Minuto" });
+  const time = page.locator('input[name="time"]');
+  await expect(hours.getByRole("option", { selected: true })).toHaveText("09");
+  await expect(time).toHaveValue("09:00");
+  // Hora sem nenhum horário fica visível e bloqueada: a pausa do almoço vale para toda a equipe.
+  await expect(hours.getByRole("option", { name: "13" })).toHaveAttribute("aria-disabled", "true");
+  // `dispatchEvent`: o Playwright recusaria clicar numa opção `aria-disabled` e, para clicar, rolaria
+  // a hora 13 para dentro da roda (o que já mudaria a seleção). A prova é a roda ignorar o clique.
+  await hours.getByRole("option", { name: "13" }).dispatchEvent("click");
+  await expect(time).toHaveValue("09:00");
+
+  // Toque: arrastar a roda uma linha (gesto de toque real do Chromium); a linha que para no centro vira seleção.
+  const box = (await hours.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.synthesizeScrollGesture", { x: box.x + box.width / 2, y: box.y + box.height / 2, yDistance: -40, gestureSourceType: "touch", speed: 400 });
+  await expect(time).toHaveValue("10:00");
+  await minutes.getByRole("option", { name: "15" }).click();
+  await expect(time).toHaveValue("10:15");
+
+  // Teclado: End vai à última hora com horário; o minuto 15 continua válido e é mantido.
+  await hours.focus();
+  await page.keyboard.press("End");
+  await expect(time).toHaveValue(/^1[78]:15$/);
+  const chosenTime = await time.inputValue();
+  // 45 min a partir de xx:30 passaria do fim da jornada: minuto visível, bloqueado, e o clique não seleciona.
+  await expect(minutes.getByRole("option", { name: "30" })).toHaveAttribute("aria-disabled", "true");
+  await minutes.getByRole("option", { name: "30" }).click({ force: true });
+  await expect(time).toHaveValue(chosenTime);
+  await expect(hours.getByRole("option", { selected: true })).toHaveText(chosenTime.slice(0, 2));
+
   await continueButton.click();
   await expect(page.getByText("Passo 3 de 3")).toBeVisible();
+  await expect(page.getByText(`às ${chosenTime}`, { exact: false }).first()).toBeVisible();
   await expect(page.getByText("Barba Premium + Sobrancelha", { exact: false }).first()).toBeVisible();
   await page.getByRole("textbox", { name: "Nome", exact: true }).fill("Cliente");
   await page.getByLabel("Sobrenome").fill("Playwright");
@@ -100,6 +139,8 @@ test("customer toggles three services and persists two in one appointment withou
   await page.getByLabel("Telefone").fill("+32 470 99 88 77");
   await page.getByRole("button", { name: /Confirmar reserva/ }).click();
   await expect(page.getByRole("heading", { name: "Sua cadeira está reservada." })).toBeVisible();
+  // O instante gravado, lido de volta pelo app no fuso da barbearia, é o horário escolhido na roda.
+  await expect(page.getByText(`, ${chosenTime} com `, { exact: false })).toBeVisible();
   await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
   await expect(page.getByText("Nada foi cobrado agora", { exact: false })).toBeVisible();
   await expect(page.getByText("Barba Premium", { exact: true })).toBeVisible();

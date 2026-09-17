@@ -10,6 +10,8 @@ import { createPublicBooking } from "@/server/services/public-booking";
 export type BookingActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+  /** Erro de regra da reserva: o wizard reage por código (`SLOT_CONFLICT` volta ao horário). */
+  code?: BookingErrorCode;
   errors?: Record<string, string[]>;
   booking?: {
     appointmentId: string;
@@ -54,7 +56,7 @@ export async function createPublicBookingAction(_state: BookingActionState, form
     const { appointmentId, services, staffName, startsAt, endsAt, durationMinutes, currency, totalCents, cancellationNoticeHours } = booking;
     return { status: "success", message: "Reserva confirmada.", booking: { appointmentId, services, staffName, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), durationMinutes, currency, totalCents, cancellationNoticeHours } };
   } catch (error) {
-    if (error instanceof BookingError) return { status: "error", message: messages[error.code] };
+    if (error instanceof BookingError) return { status: "error", code: error.code, message: messages[error.code] };
     console.error("PUBLIC_BOOKING_FAILED", error);
     return { status: "error", message: "Não foi possível confirmar a reserva. Tente novamente." };
   }

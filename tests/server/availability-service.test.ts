@@ -39,6 +39,61 @@ describe("tenant availability service", () => {
   });
 });
 
+describe("slot boundaries for a summed duration", () => {
+  // Terça 2026-07-21, jornada 10:00–18:00 sem pausa; um atendimento 10:30–11:00 (08:30–09:00Z no verão).
+  const workday = { dayOfWeek: 2, startMinute: 600, endMinute: 1080, breakStartMinute: null, breakEndMinute: null };
+  const occupied = { startsAt: new Date("2026-07-21T08:30:00.000Z"), endsAt: new Date("2026-07-21T09:00:00.000Z") };
+  const times = (durationMinutes: number, appointments = [occupied]) =>
+    getAvailableSlotsFromRecords({ date: "2026-07-21", timezone: "Europe/Brussels", durationMinutes, intervalMinutes: 15, staff: [{ id: "staff-1", availability: [workday], timeOff: [], appointments }] })
+      .filter((slot) => slot.staffIds.length > 0)
+      .map((slot) => slot.time);
+
+  it("does not let a 60-minute booking start at 17:30 when the day ends at 18:00", () => {
+    const sixty = times(60);
+    expect(sixty.at(-1)).toBe("17:00");
+    expect(sixty).not.toContain("17:15");
+    expect(sixty).not.toContain("17:30");
+    expect(times(30).at(-1)).toBe("17:30");
+  });
+
+  it("blocks a 60-minute start at 10:00 when 10:30–11:00 is taken, but not a 30-minute one", () => {
+    expect(times(60)).not.toContain("10:00");
+    expect(times(60)).not.toContain("10:15");
+    expect(times(30)).toContain("10:00");
+  });
+
+  it("allows ending exactly when another appointment starts and starting exactly when it ends", () => {
+    // Jornada 09:00–18:00 para haver espaço antes das 10:30; intervalos são [início, fim).
+    const sixty = getAvailableSlotsFromRecords({ date: "2026-07-21", timezone: "Europe/Brussels", durationMinutes: 60, intervalMinutes: 15, staff: [{ id: "staff-1", availability: [{ ...workday, startMinute: 540 }], timeOff: [], appointments: [occupied] }] })
+      .filter((slot) => slot.staffIds.length > 0)
+      .map((slot) => slot.time);
+    expect(sixty).toContain("09:30"); // termina 10:30, exatamente no início do outro
+    expect(sixty).not.toContain("09:45"); // terminaria 10:45, dentro do outro
+    expect(sixty).toContain("11:00"); // começa exatamente no fim do outro
+  });
+});
+
+describe("Brussels wall clock across seasons", () => {
+  it("converts a winter wall-clock time to UTC (+1)", () => {
+    expect(localDateTimeToUtc("2026-01-20", "10:15", "Europe/Brussels").toISOString()).toBe("2026-01-20T09:15:00.000Z");
+  });
+
+  it("uses the offset in force on the day the clocks change", () => {
+    // 29/03/2026 muda para o verão às 02:00; 25/10/2026 volta ao inverno às 03:00.
+    expect(localDateTimeToUtc("2026-03-29", "09:00", "Europe/Brussels").toISOString()).toBe("2026-03-29T07:00:00.000Z");
+    expect(localDateTimeToUtc("2026-10-25", "09:00", "Europe/Brussels").toISOString()).toBe("2026-10-25T08:00:00.000Z");
+  });
+
+  it("persists instants whose gap is exactly the summed duration, in summer and in winter", () => {
+    const staff = [{ id: "staff-1", availability: [{ dayOfWeek: 2, startMinute: 540, endMinute: 720, breakStartMinute: null, breakEndMinute: null }], timeOff: [], appointments: [] }];
+    for (const [date, expectedStart] of [["2026-07-21", "2026-07-21T07:00:00.000Z"], ["2026-01-20", "2026-01-20T08:00:00.000Z"]] as const) {
+      const slot = getAvailableSlotsFromRecords({ date, timezone: "Europe/Brussels", durationMinutes: 75, intervalMinutes: 15, staff }).find((item) => item.time === "09:00");
+      expect(slot?.startsAt).toBe(expectedStart);
+      expect(new Date(slot!.endsAt).getTime() - new Date(slot!.startsAt).getTime()).toBe(75 * 60_000);
+    }
+  });
+});
+
 describe("slot cutoff by now", () => {
   const staff = [{ id: "staff-1", availability: [{ dayOfWeek: 2, startMinute: 540, endMinute: 720, breakStartMinute: null, breakEndMinute: null }], timeOff: [], appointments: [] }];
 

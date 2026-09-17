@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState, useTransition } from "react";
+import { useActionState, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight, CalendarCheck, Check, Clock, Crown, Eye, ShieldCheck, Sparkles, Scissors, Star, UserRound, Users, Zap, type LucideIcon } from "lucide-react";
 
 import { createPublicBookingAction, type BookingActionState } from "@/app/(public)/barbearia/[slug]/agendar/actions";
@@ -8,6 +8,7 @@ import { dayLabel, money } from "@/components/booking/booking-format";
 import { doesAll, initialSelection, toggleSelection } from "@/components/booking/booking-selection";
 import { BookingSuccess } from "@/components/booking/booking-success";
 import { BookingSummary } from "@/components/booking/booking-summary";
+import { TimeWheelPicker } from "@/components/booking/time-wheel-picker";
 import { MonthCalendar, type CalendarDay } from "@/components/booking/month-calendar";
 import { StaffAvatar } from "@/components/staff-avatar";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
 type BookingCatalog = {
@@ -68,7 +68,10 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [policy, setPolicy] = useState(true);
   const [isLoadingSlots, startLoadingSlots] = useTransition();
   const [isLoadingMonth, startLoadingMonth] = useTransition();
-  const [state, action, pending] = useActionState(createPublicBookingAction, initialState);
+  // Consultas de mês e de dia em voo: só a mais recente vale. Trocar dia, mês, serviço ou
+  // profissional depressa não pode trazer de volta os horários de uma consulta anterior.
+  const scheduleRequest = useRef(0);
+  const [state, action, pending] = useActionState(submitBooking, initialState);
   // Itens na ordem do catálogo, independente da ordem em que foram marcados.
   const selectedServices = useMemo(() => catalog.services.filter((item) => serviceIds.includes(item.id)), [catalog.services, serviceIds]);
   const totalMinutes = selectedServices.reduce((sum, item) => sum + item.durationMinutes, 0);
@@ -83,8 +86,21 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const selectedSlot = slots.find((item) => item.time === time);
   const selectionReady = selectedServices.length > 0 && eligibleStaff.length > 0;
 
-  const toggleService = (id: string) => setSelection((current) => toggleSelection(current, id, catalog));
-  const selectStaff = (id: string) => setSelection((current) => ({ ...current, staffId: id }));
+  // Serviço ou profissional novo invalida dia e horário já escolhidos (e qualquer resposta em voo).
+  const toggleService = (id: string) => { setSelection((current) => toggleSelection(current, id, catalog)); resetSchedule(); };
+  const selectStaff = (id: string) => { setSelection((current) => ({ ...current, staffId: id })); resetSchedule(); };
+
+  function nextRequest() {
+    scheduleRequest.current += 1;
+    return scheduleRequest.current;
+  }
+
+  function resetSchedule() {
+    nextRequest();
+    setDate("");
+    setTime("");
+    setSlots([]);
+  }
 
   /** Mesma seleção nas duas rotas de disponibilidade: um `serviceIds` por serviço. */
   function selectionQuery(extra: Record<string, string>) {
@@ -93,7 +109,9 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
     return query;
   }
 
-  async function loadAvailability(nextDate = date) {
+  /** Horários do dia; a seleção antiga não sobrevive: o primeiro horário do dia novo vira o escolhido.
+   *  Resposta de uma consulta mais antiga que `request` é descartada. */
+  async function loadAvailability(nextDate: string, request = nextRequest()) {
     setAvailabilityError(undefined);
     if (!nextDate) {
       setSlots([]);
@@ -104,49 +122,76 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
       const response = await fetch(`/api/public/${catalog.business.slug}/availability?${selectionQuery({ date: nextDate })}`);
       if (!response.ok) throw new Error("AVAILABILITY_FAILED");
       const payload = await response.json() as { slots: Slot[] };
+      if (request !== scheduleRequest.current) return;
       setSlots(payload.slots);
       setTime(payload.slots[0]?.time ?? "");
     } catch {
+      if (request !== scheduleRequest.current) return;
       setSlots([]);
       setTime("");
       setAvailabilityError("Não foi possível carregar os horários. Tente novamente.");
     }
   }
 
-  /** Carrega os dias do mês; devolve o primeiro dia livre (ou "" se não houver). */
-  async function loadMonth(nextMonth = month) {
+  /** Carrega os dias do mês; devolve o primeiro dia livre ("" se não houver) ou `undefined` quando
+   *  a resposta já ficou para trás — quem chamou não deve mexer em mais nada. */
+  async function loadMonth(nextMonth: string, request = nextRequest()) {
     setMonthError(undefined);
     try {
       const response = await fetch(`/api/public/${catalog.business.slug}/availability/month?${selectionQuery({ month: nextMonth })}`);
       if (!response.ok) throw new Error("MONTH_FAILED");
       const payload = await response.json() as { days: CalendarDay[] };
+      if (request !== scheduleRequest.current) return undefined;
       setDays(payload.days);
       return payload.days.find((day) => day.available)?.date ?? "";
     } catch {
+      if (request !== scheduleRequest.current) return undefined;
       setDays([]);
       setMonthError("Não foi possível carregar o mês. Tente novamente.");
       return "";
     }
   }
 
+  /** Mês novo: recarrega os dias e cai no primeiro livre, com os horários dele. */
+  async function loadMonthAndFirstDay(nextMonth: string, request = nextRequest()) {
+    const firstFree = await loadMonth(nextMonth, request);
+    if (firstFree === undefined) return;
+    setDate(firstFree);
+    await loadAvailability(firstFree, request);
+  }
+
   function changeMonth(nextMonth: string) {
     setMonth(nextMonth);
-    startLoadingMonth(async () => {
-      const firstFree = await loadMonth(nextMonth);
-      setDate(firstFree);
-      await loadAvailability(firstFree);
-    });
+    startLoadingMonth(() => loadMonthAndFirstDay(nextMonth));
+  }
+
+  function selectDate(nextDate: string) {
+    setDate(nextDate);
+    startLoadingSlots(() => loadAvailability(nextDate));
+  }
+
+  /** Outro cliente levou o horário entre a escolha e a confirmação: volta ao passo do horário com
+   *  os dados pessoais intactos (o estado é controlado) e recalcula o dia e o mês. */
+  async function submitBooking(previous: BookingActionState, formData: FormData) {
+    const result = await createPublicBookingAction(previous, formData);
+    if (result.code === "SLOT_CONFLICT") {
+      setStep(1);
+      const request = nextRequest();
+      startLoadingSlots(async () => {
+        await loadMonth(month, request);
+        await loadAvailability(date, request);
+      });
+    }
+    return result;
   }
 
   function next() {
     if (step === 0) {
       // Serviço/profissional podem ter mudado: recalcular o mês e cair no primeiro dia livre.
+      const startMonth = catalog.window.today.slice(0, 7);
+      setMonth(startMonth);
       startLoadingSlots(async () => {
-        const startMonth = catalog.window.today.slice(0, 7);
-        setMonth(startMonth);
-        const firstFree = await loadMonth(startMonth);
-        setDate(firstFree);
-        await loadAvailability(firstFree);
+        await loadMonthAndFirstDay(startMonth);
         setStep(1);
       });
       return;
@@ -156,6 +201,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
 
   const detailsReady = Boolean(firstName && lastName && email && phone && policy);
   const lastStep = step === steps.length - 1;
+  const isLoadingSchedule = isLoadingSlots || isLoadingMonth;
 
   if (state.status === "success" && state.booking) return <BookingSuccess booking={state.booking} business={catalog.business} />;
 
@@ -229,15 +275,34 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
               </div>
             </div>
           ) : null}
-          {step === 1 ? <div className="flex flex-col gap-6"><div><p className="mb-3 text-xs font-medium text-muted-foreground">Escolha o dia</p>{monthError ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{monthError}</p> : <MonthCalendar month={month} days={days} selected={date} minMonth={catalog.window.today.slice(0, 7)} maxMonth={catalog.window.last.slice(0, 7)} loading={isLoadingMonth} onMonthChange={changeMonth} onSelect={(value) => { setDate(value); startLoadingSlots(() => loadAvailability(value)); }} />}</div><div><p className="mb-3 text-xs font-medium text-muted-foreground">Horários disponíveis{date ? ` · ${dayLabel(date)}` : ""}</p>{isLoadingSlots || isLoadingMonth ? <p className="text-sm text-muted-foreground">Calculando disponibilidade...</p> : slots.length ? <ToggleGroup type="single" value={time} onValueChange={(value) => value && setTime(value)} className="grid grid-cols-3 gap-2 sm:grid-cols-4">{slots.map((item) => <ToggleGroupItem key={item.time} value={item.time} className="font-mono data-[state=on]:bg-brand data-[state=on]:text-brand-ink">{item.time}</ToggleGroupItem>)}</ToggleGroup> : <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{availabilityError ?? (date ? "Nenhum horário disponível neste dia." : "Nenhum dia com horário livre neste mês.")}</p>}</div><div className="rounded-xl border border-primary/20 bg-primary/6 p-3 text-xs text-muted-foreground"><ShieldCheck className="mr-2 inline size-4 text-brand" /> Conferimos a disponibilidade do seu horário antes de confirmar.</div></div> : null}
+          {step === 1 ? (
+            <div className="flex flex-col gap-6">
+              <div>
+                <p className="mb-3 text-xs font-medium text-muted-foreground">Escolha o dia</p>
+                {monthError ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{monthError}</p> : <MonthCalendar month={month} days={days} selected={date} minMonth={catalog.window.today.slice(0, 7)} maxMonth={catalog.window.last.slice(0, 7)} loading={isLoadingMonth} onMonthChange={changeMonth} onSelect={selectDate} />}
+              </div>
+              <div>
+                <p className="mb-3 text-xs font-medium text-muted-foreground">Horário{date ? ` · ${dayLabel(date)}` : ""}{isLoadingSchedule ? " · calculando disponibilidade..." : ""}</p>
+                {slots.length ? (
+                  <TimeWheelPicker slots={slots} value={time} onChange={setTime} disabled={isLoadingSchedule} />
+                ) : isLoadingSchedule ? (
+                  <p className="text-sm text-muted-foreground">Calculando disponibilidade...</p>
+                ) : (
+                  <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{availabilityError ?? (date ? "Nenhum horário disponível neste dia." : "Nenhum dia com horário livre neste mês.")}</p>
+                )}
+                {state.code === "SLOT_CONFLICT" && state.message ? <p className="mt-3 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
+              </div>
+              <div className="rounded-xl border border-primary/20 bg-primary/6 p-3 text-xs text-muted-foreground"><ShieldCheck className="mr-2 inline size-4 text-brand" /> Conferimos a disponibilidade do seu horário antes de confirmar.</div>
+            </div>
+          ) : null}
           {step === 2 ? (
             <div className="flex flex-col gap-6">
               <div className="rounded-2xl border border-white/8 bg-black/15 p-5"><div className="flex items-center gap-3"><div className="icon-tile size-10"><CalendarCheck /></div><div><p className="font-medium">{serviceNames} com {selectedStaff?.displayName ?? "o primeiro profissional disponível"}</p><p className="text-xs text-muted-foreground">{dayLabel(date)} às {time} · {totalMinutes} min</p></div></div><Separator className="my-4" /><div className="flex justify-between text-sm"><span>Total, pago na barbearia</span><span className="font-heading text-xl font-semibold">{price(totalCents)}</span></div><p className="mt-2 text-xs text-muted-foreground">Nada é cobrado agora. Para cancelar, avise com {catalog.business.cancellationNoticeHours}h de antecedência.</p></div>
               <FieldGroup><div className="grid gap-4 sm:grid-cols-2"><Field><FieldLabel htmlFor="firstNameVisible">Nome</FieldLabel><Input id="firstNameVisible" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required /></Field><Field><FieldLabel htmlFor="lastNameVisible">Sobrenome</FieldLabel><Input id="lastNameVisible" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required /></Field></div><Field><FieldLabel htmlFor="bookingEmail">E-mail</FieldLabel><Input id="bookingEmail" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></Field><Field><FieldLabel htmlFor="phoneVisible">Telefone</FieldLabel><Input id="phoneVisible" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" required /></Field><Field orientation="horizontal"><Checkbox id="policyVisible" checked={policy} onCheckedChange={(value) => setPolicy(value === true)} /><FieldLabel htmlFor="policyVisible" className="font-normal">Aceito a política de cancelamento de {catalog.business.cancellationNoticeHours} horas.</FieldLabel></Field></FieldGroup>
-              {state.message ? <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
+              {state.message && state.code !== "SLOT_CONFLICT" ? <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
             </div>
           ) : null}
-          <div className="mt-8 flex items-center justify-between"><Button type="button" variant="ghost" onClick={(event) => { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }} disabled={step === 0 || pending}><ArrowLeft data-icon="inline-start" /> Voltar</Button>{lastStep ? <Button key="submit-booking" type="submit" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" disabled={pending || !time || !detailsReady}>{pending ? "Confirmando..." : "Confirmar reserva"}<Check data-icon="inline-start" /></Button> : <Button key={`continue-${step}`} type="button" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" onClick={(event) => { event.preventDefault(); next(); }} disabled={isLoadingSlots || isLoadingMonth || (step === 0 && !selectionReady) || (step === 1 && (!time || !selectedSlot))}>Continuar <ArrowRight data-icon="inline-end" /></Button>}</div>
+          <div className="mt-8 flex items-center justify-between"><Button type="button" variant="ghost" onClick={(event) => { event.preventDefault(); setStep((current) => Math.max(0, current - 1)); }} disabled={step === 0 || pending}><ArrowLeft data-icon="inline-start" /> Voltar</Button>{lastStep ? <Button key="submit-booking" type="submit" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" disabled={pending || !time || !detailsReady}>{pending ? "Confirmando..." : "Confirmar reserva"}<Check data-icon="inline-start" /></Button> : <Button key={`continue-${step}`} type="button" className="bg-brand text-brand-ink hover:bg-brand-deep hover:text-white" onClick={(event) => { event.preventDefault(); next(); }} disabled={isLoadingSchedule || (step === 0 && !selectionReady) || (step === 1 && (!time || !selectedSlot))}>Continuar <ArrowRight data-icon="inline-end" /></Button>}</div>
         </CardContent>
       </Card>
       <BookingSummary services={selectedServices} totalMinutes={totalMinutes} totalCents={totalCents} currency={catalog.business.currency} staffName={selectedStaff?.displayName} date={date} time={time} />
