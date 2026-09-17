@@ -108,11 +108,13 @@ describe.sequential("notificação de reserva confirmada", () => {
     const whatsapp = await tenantDb(tenantId).notification.create({ data: { tenantId, customerId: booking.customerId, channel: "WHATSAPP", status: "QUEUED", recipient: "+32470444444", templateKey: BOOKING_CONFIRMED_TEMPLATE_KEY, eventKey: bookingConfirmedEventKey(booking.appointmentId), title: "Reserva confirmada", body: "-", metadata: {} }, select: { id: true } });
     const send = vi.fn(async (_recipient: string, _rendered: unknown, idempotencyKey: string) => ({ providerMessageId: `email_${idempotencyKey}` }));
 
-    // Fila só desta barbearia: as quatro reservas de e-mail acima e a linha de WhatsApp.
+    // Fila só desta barbearia: os e-mails das reservas acima e a linha de WhatsApp.
     const store = prismaNotificationStore(tenantDb(tenantId));
+    const pendingEmails = await tenantDb(tenantId).notification.count({ where: { tenantId, status: "QUEUED", channel: "EMAIL", eventKey: { not: null } } });
+    expect(pendingEmails).toBeGreaterThanOrEqual(1);
     const summary = await dispatchPending({ limit: 50, store, providers: fakeRegistry(send) });
-    expect(summary).toEqual({ processed: 5, sent: 4, retried: 0, failed: 0, notConfigured: 1, skipped: 0 });
-    expect(send).toHaveBeenCalledTimes(4);
+    expect(summary).toEqual({ processed: pendingEmails + 1, sent: pendingEmails, retried: 0, failed: 0, notConfigured: 1, skipped: 0 });
+    expect(send).toHaveBeenCalledTimes(pendingEmails);
     expect(send.mock.calls.every(([recipient]) => recipient.includes("@"))).toBe(true);
 
     const sent = await tenantDb(tenantId).notification.findUniqueOrThrow({ where: { id: booking.notificationId } });
@@ -122,7 +124,7 @@ describe.sequential("notificação de reserva confirmada", () => {
     // Segunda passada não reenvia o que já foi.
     const again = await dispatchPending({ limit: 50, store, providers: fakeRegistry(send) });
     expect(again).toMatchObject({ sent: 0, notConfigured: 1 });
-    expect(send).toHaveBeenCalledTimes(4);
+    expect(send).toHaveBeenCalledTimes(pendingEmails);
   });
 
   it("endpoint interno: 401 sem ou com bearer errado; com o certo processa pendentes", async () => {
@@ -131,13 +133,18 @@ describe.sequential("notificação de reserva confirmada", () => {
     expect((await call({ authorization: `Bearer errado-${stamp}` })).status).toBe(401);
     expect((await call({ authorization: `Bearer ${secret}` }, { limit: 0 })).status).toBe(400);
 
-    const booking = await book({ time: "16:00", phone: "+32 470 55 55 55" });
+    // O endpoint atravessa o banco inteiro: aqui só a forma da resposta. Sem provedor
+    // configurado nada é enviado nem falha.
     const response = await call({ authorization: `Bearer ${secret}` }, { limit: 50 });
     expect(response.status).toBe(200);
     const payload = await response.json();
-    // Sem provedor configurado: o que estava pendente continua pendente, com o motivo.
-    expect(payload).toMatchObject({ sent: 0, failed: 0 });
-    expect(payload.notConfigured).toBeGreaterThanOrEqual(1);
+    expect(payload).toMatchObject({ sent: 0, retried: 0, failed: 0 });
+    expect(Object.keys(payload).sort()).toEqual(["failed", "notConfigured", "processed", "retried", "sent", "skipped"]);
+    expect(payload.processed).toBe(payload.notConfigured + payload.skipped);
+
+    // O efeito numa linha, com o mesmo registro padrão (sem chave) e o alcance desta barbearia.
+    const booking = await book({ time: "16:00", phone: "+32 470 55 55 55" });
+    await expect(dispatchNotification(booking.notificationId, { store: prismaNotificationStore(tenantDb(tenantId)) })).resolves.toBe("NOT_CONFIGURED");
     const row = await tenantDb(tenantId).notification.findUniqueOrThrow({ where: { id: booking.notificationId } });
     expect(row).toMatchObject({ status: "QUEUED", attempts: 0, lastError: EMAIL_PROVIDER_NOT_CONFIGURED });
   });

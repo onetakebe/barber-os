@@ -9,11 +9,12 @@ import { tenantDb } from "@/server/db";
 const channelLabel: Record<Notification["channel"], string> = { IN_APP: "Interna", EMAIL: "E-mail", WHATSAPP: "WhatsApp", SMS: "SMS", PUSH: "Push" };
 
 /** Estado real da fila (Bloco 1 / ticket 3): pendente aguarda envio ou retentativa, enviado
- *  tem id do provedor, falhou esgotou as tentativas ou bateu em erro definitivo. Linhas
- *  antigas com `metadata.simulated` nunca foram enviadas e ficam marcadas como tal. */
+ *  tem id do provedor, falhou esgotou as tentativas ou bateu em erro definitivo. Linhas sem
+ *  `eventKey` com `metadata.simulated` (confirmações antigas, oferta da fila de espera) nunca
+ *  passaram por um provedor e ficam marcadas como simuladas. */
 function statusBadge(item: Notification) {
-  const simulated = typeof item.metadata === "object" && item.metadata !== null && "simulated" in item.metadata && item.metadata.simulated === true;
-  if (simulated) return <Badge variant="outline">simulado (antigo)</Badge>;
+  const simulated = item.eventKey === null && typeof item.metadata === "object" && item.metadata !== null && "simulated" in item.metadata && item.metadata.simulated === true;
+  if (simulated) return <Badge variant="outline">simulado</Badge>;
   switch (item.status) {
     case "SENT": return <Badge>enviado</Badge>;
     case "FAILED": return <Badge variant="destructive">falhou</Badge>;

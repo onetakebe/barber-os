@@ -9,11 +9,15 @@ import { ProviderSendError, type NotificationChannelProvider, type RenderedMessa
 /** Só o que usamos do SDK — permite injetar um cliente falso nos testes. */
 export type ResendEmailsClient = { send(payload: CreateEmailOptions, options?: CreateEmailRequestOptions): Promise<CreateEmailResponse> };
 
-/** 429 e 5xx (ou sem status: rede/timeout) valem nova tentativa; o resto do 4xx é definitivo
- *  (chave inválida, remetente não verificado, destinatário malformado…). */
+/** Erros de idempotência (409) são transitórios: o `after()` da reserva e o endpoint interno
+ *  podem esbarrar na mesma chave ao mesmo tempo, e o e-mail em curso não pode virar FAILED. */
+const TRANSIENT_ERROR_NAMES: ReadonlySet<ErrorResponse["name"]> = new Set(["concurrent_idempotent_requests", "invalid_idempotent_request", "rate_limit_exceeded", "internal_server_error"]);
+
+/** 429, 5xx e sem status (rede/timeout) valem nova tentativa, além dos nomes acima; o resto
+ *  do 4xx é definitivo (chave inválida, remetente não verificado, destinatário malformado…). */
 export function classifyResendError(error: ErrorResponse): ProviderSendError {
   const status = error.statusCode;
-  const transient = status === null || status === 429 || status >= 500;
+  const transient = TRANSIENT_ERROR_NAMES.has(error.name) || status === null || status === 429 || status >= 500;
   return new ProviderSendError(transient ? "transient" : "permanent", error.name, `${error.name}: ${error.message}`);
 }
 

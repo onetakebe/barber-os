@@ -1,7 +1,7 @@
 import { BOOKING_CONFIRMED_TEMPLATE_KEY, renderBookingConfirmedSnapshot } from "@/server/notifications/booking-confirmed";
 import { ProviderSendError, type ChannelRegistry, type RenderedMessage } from "@/server/notifications/contracts";
 import { buildChannelRegistry } from "@/server/notifications/registry";
-import type { NotificationStore, QueuedNotification } from "@/server/notifications/store";
+import type { NotificationStore, QueuedNotification, TransitionData } from "@/server/notifications/store";
 
 /* Envio das notificações enfileiradas (Bloco 1 / ticket 3), versão enxuta: sem webhook, sem
    cron, sem lock. A reserva chama `dispatchNotification` depois do commit; o endpoint interno
@@ -11,7 +11,8 @@ import type { NotificationStore, QueuedNotification } from "@/server/notificatio
 export const BACKOFF_MINUTES = [1, 5, 15, 60] as const;
 export const MAX_ATTEMPTS = BACKOFF_MINUTES.length + 1;
 
-export type DispatchOutcome = "SENT" | "RETRY" | "FAILED" | "NOT_CONFIGURED" | "SKIPPED" | "NOT_FOUND";
+/** `STALE`: outra execução mexeu na linha entre a leitura e a transição — nada foi gravado. */
+export type DispatchOutcome = "SENT" | "RETRY" | "FAILED" | "NOT_CONFIGURED" | "SKIPPED" | "NOT_FOUND" | "STALE";
 
 export type DispatchOptions = {
   /** Quem chama escolhe o alcance: `tenantDb` na reserva, `adminDb` no endpoint interno. */
@@ -41,35 +42,31 @@ export async function dispatchNotification(notificationId: string, options: Disp
   if (row.status !== "QUEUED" || !row.eventKey || !row.recipient) return "SKIPPED";
   const expected = { attempts: row.attempts };
 
+  // Toda transição é condicionada à linha lida; se perdeu a corrida, avisa e não finge resultado.
+  const settle = async (outcome: DispatchOutcome, data: TransitionData): Promise<DispatchOutcome> => {
+    if (await store.transition(row.id, expected, data)) return outcome;
+    console.warn("NOTIFICATION_TRANSITION_LOST", { notificationId: row.id, expectedAttempts: expected.attempts, outcome });
+    return "STALE";
+  };
+
   // Sem transporte a linha fica na fila, sem gastar tentativa: entra quando a chave existir.
   const entry = providers[row.channel];
-  if (!entry || !entry.enabled) {
-    await store.transition(row.id, expected, { lastError: entry ? entry.reason : "CHANNEL_NOT_SUPPORTED" });
-    return "NOT_CONFIGURED";
-  }
+  if (!entry || !entry.enabled) return settle("NOT_CONFIGURED", { lastError: entry ? entry.reason : "CHANNEL_NOT_SUPPORTED" });
 
   const rendered = render(row);
-  if ("error" in rendered) {
-    await store.transition(row.id, expected, { status: "FAILED", lastError: rendered.error, nextAttemptAt: null });
-    return "FAILED";
-  }
+  if ("error" in rendered) return settle("FAILED", { status: "FAILED", lastError: rendered.error, nextAttemptAt: null });
 
   try {
     const { providerMessageId } = await entry.provider.send(row.recipient, rendered, row.eventKey);
-    await store.transition(row.id, expected, { status: "SENT", attempts: row.attempts + 1, sentAt: now, provider: entry.provider.name, providerMessageId, lastError: null, nextAttemptAt: null });
-    return "SENT";
+    return settle("SENT", { status: "SENT", attempts: row.attempts + 1, sentAt: now, provider: entry.provider.name, providerMessageId, lastError: null, nextAttemptAt: null });
   } catch (error) {
     const attempts = row.attempts + 1;
     const lastError = error instanceof Error ? error.message : String(error);
     // Erro que não veio classificado (rede, bug do SDK) é tratado como transitório.
     const permanent = error instanceof ProviderSendError && error.kind === "permanent";
-    if (permanent || attempts >= MAX_ATTEMPTS) {
-      await store.transition(row.id, expected, { status: "FAILED", attempts, lastError, nextAttemptAt: null });
-      return "FAILED";
-    }
+    if (permanent || attempts >= MAX_ATTEMPTS) return settle("FAILED", { status: "FAILED", attempts, lastError, nextAttemptAt: null });
     const nextAttemptAt = new Date(now.getTime() + BACKOFF_MINUTES[attempts - 1]! * 60_000);
-    await store.transition(row.id, expected, { attempts, lastError, nextAttemptAt });
-    return "RETRY";
+    return settle("RETRY", { attempts, lastError, nextAttemptAt });
   }
 }
 
@@ -80,7 +77,7 @@ export async function dispatchPending(options: DispatchOptions & { limit: number
   const providers = options.providers ?? buildChannelRegistry();
   const now = options.now ?? new Date();
   const summary: DispatchSummary = { processed: 0, sent: 0, retried: 0, failed: 0, notConfigured: 0, skipped: 0 };
-  const counters: Record<DispatchOutcome, keyof DispatchSummary> = { SENT: "sent", RETRY: "retried", FAILED: "failed", NOT_CONFIGURED: "notConfigured", SKIPPED: "skipped", NOT_FOUND: "skipped" };
+  const counters: Record<DispatchOutcome, keyof DispatchSummary> = { SENT: "sent", RETRY: "retried", FAILED: "failed", NOT_CONFIGURED: "notConfigured", SKIPPED: "skipped", NOT_FOUND: "skipped", STALE: "skipped" };
 
   // Sequencial de propósito: o volume é pequeno e o provedor tem limite de taxa.
   for (const row of await store.listPending(now, options.limit)) {

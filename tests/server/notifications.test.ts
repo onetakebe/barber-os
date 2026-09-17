@@ -131,6 +131,9 @@ describe("provedor Resend", () => {
     expect(classifyResendError({ name: "rate_limit_exceeded", statusCode: 429, message: "" }).kind).toBe("transient");
     expect(classifyResendError({ name: "internal_server_error", statusCode: 500, message: "" }).kind).toBe("transient");
     expect(classifyResendError({ name: "application_error", statusCode: null, message: "fetch failed" }).kind).toBe("transient");
+    // 409 de idempotência: outra execução está com a mesma chave — retentar, nunca desistir.
+    expect(classifyResendError({ name: "concurrent_idempotent_requests", statusCode: 409, message: "" }).kind).toBe("transient");
+    expect(classifyResendError({ name: "invalid_idempotent_request", statusCode: 409, message: "" }).kind).toBe("transient");
     expect(classifyResendError({ name: "invalid_api_key", statusCode: 401, message: "" }).kind).toBe("permanent");
     expect(classifyResendError({ name: "validation_error", statusCode: 422, message: "" }).kind).toBe("permanent");
     const send = vi.fn(async () => ({ data: null, error: { name: "invalid_from_address" as const, statusCode: 403, message: "not verified" }, headers: null }));
@@ -181,6 +184,21 @@ describe("máquina de estados da fila", () => {
     expect(send.mock.calls[0]?.[0]).toBe("ana@exemplo.com");
     expect(send.mock.calls[0]?.[2]).toBe("booking:appt-1:confirmed");
     expect(rows[0]).toMatchObject({ status: "SENT", provider: "fake", providerMessageId: "email_123", sentAt: now, lastError: null, attempts: 1 });
+  });
+
+  it("perdeu a corrida: a outra execução já transitou a linha, nada é gravado e o resultado é STALE", async () => {
+    const { store, rows, updates } = memoryStore([queuedRow()]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // O provedor devolve sucesso, mas entre a leitura e a transição outro executor já marcou SENT.
+    const send = vi.fn<NotificationChannelProvider["send"]>(async () => {
+      Object.assign(rows[0]!, { status: "SENT", attempts: 1, providerMessageId: "email_do_outro" });
+      return { providerMessageId: "email_meu" };
+    });
+    await expect(dispatchNotification("n1", { store, providers: enabled(fakeProvider(send)), now })).resolves.toBe("STALE");
+    expect(rows[0]).toMatchObject({ status: "SENT", attempts: 1, providerMessageId: "email_do_outro" });
+    expect(updates).toEqual([]);
+    expect(warn).toHaveBeenCalledWith("NOTIFICATION_TRANSITION_LOST", { notificationId: "n1", expectedAttempts: 0, outcome: "SENT" });
+    warn.mockRestore();
   });
 
   it("falha transitória: attempts+1, nextAttemptAt no futuro com backoff progressivo, ainda QUEUED", async () => {

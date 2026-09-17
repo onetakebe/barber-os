@@ -12,7 +12,9 @@ de cancelamento). Quem envia lê só esse snapshot — nunca reconsulta o agenda
 1. `createPublicBooking` cria agendamento + notificação `QUEUED`. Se a transação cair (conflito
    de horário, por exemplo), não sobra nem agendamento nem notificação.
 2. A Server Action responde ao cliente e agenda `dispatchNotification(notificationId)` com
-   `after()` do Next: o envio acontece depois da resposta, fora do caminho da reserva.
+   `after()` do Next: o envio acontece depois da resposta, fora do caminho da reserva. O
+   `after()` roda dentro do `maxDuration` da rota; se for cortado no meio, a transição não
+   acontece e a linha simplesmente continua `QUEUED` para a próxima passada.
 3. `dispatchNotification` resolve o provedor pelo canal (`buildChannelRegistry`), renderiza
    assunto/HTML/texto a partir do snapshot (texto do cliente escapado no HTML, hora local no fuso
    da barbearia) e envia com `idempotencyKey = eventKey` — reenviar a mesma linha nunca duplica
@@ -29,7 +31,10 @@ de cancelamento). Quem envia lê só esse snapshot — nunca reconsulta o agenda
 
 Não há webhook de entrega, cron nem lock: é a versão enxuta decidida em 17/09. Duas execuções
 simultâneas na mesma linha (o `after()` e o endpoint) não se atropelam porque a transição só
-vale se a linha ainda estiver `QUEUED` com o mesmo número de tentativas.
+vale se a linha ainda estiver `QUEUED` com o mesmo número de tentativas; quem perde a corrida
+registra `NOTIFICATION_TRANSITION_LOST` e conta como `skipped`. No provedor, a mesma chave de
+idempotência em paralelo devolve 409 (`concurrent_idempotent_requests`), tratado como
+transitório — nunca marca FAILED um e-mail que está saindo pela outra execução.
 
 ## Variáveis de ambiente
 
@@ -56,6 +61,11 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/internal/notifications/dispatch" \
 ```
 
 `limit` é opcional (1–500, padrão 100). Sem bearer, ou com bearer errado: `401`.
+
+O repositório não agenda essa chamada. **Em produção alguém precisa chamar o endpoint a cada
+5–15 minutos** (Vercel Cron, um pinger externo, o que houver na hospedagem); sem isso, uma
+reserva feita com o provedor fora do ar ou com `RESEND_API_KEY` ausente fica pendente até uma
+chamada manual.
 
 ## Preparação para WhatsApp
 

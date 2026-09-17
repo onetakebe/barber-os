@@ -16,5 +16,7 @@ ALTER TABLE "Notification"
 -- Um evento gera no máximo uma linha por canal e barbearia. NULL não colide: as linhas
 -- antigas (envio simulado, sem eventKey) continuam válidas e nunca entram na fila.
 CREATE UNIQUE INDEX "Notification_tenantId_eventKey_channel_key" ON "Notification"("tenantId", "eventKey", "channel");
--- Leitura da fila: pendentes cuja retentativa já venceu.
+-- Leitura da fila: pendentes cuja retentativa já venceu. Compromisso deliberado: o ideal seria
+-- um índice parcial (WHERE status = 'QUEUED' AND "eventKey" IS NOT NULL), que o Prisma não
+-- consegue expressar no schema; o composto cobre a mesma consulta com um pouco mais de espaço.
 CREATE INDEX "Notification_status_nextAttemptAt_idx" ON "Notification"("status", "nextAttemptAt");

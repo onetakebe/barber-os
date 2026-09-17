@@ -50,7 +50,7 @@ const plural = (count: number, singular: string, pluralForm: string) => `${count
 /** "terça-feira, 21 de julho de 2026" no fuso da barbearia. */
 const longDate = (iso: string, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone, weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(iso));
 const shortDate = (iso: string, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone, day: "numeric", month: "long" }).format(new Date(iso));
-const clock = (iso: string, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const clock = (iso: string, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
 
 const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 
@@ -122,6 +122,20 @@ export function summarizeBookingConfirmed(event: BookingConfirmedV1) {
   return {
     title: "Reserva confirmada",
     body: `${names} com ${event.staffName}, ${longDate(event.startsAt, event.timezone)} às ${clock(event.startsAt, event.timezone)}. ${money(event.totalCents, event.currency)}, pago na barbearia. E-mail para ${event.customer.email}.`,
+  };
+}
+
+/** Linha de `Notification` que a reserva grava na transação: QUEUED, e-mail, resumo em texto e
+ *  o snapshot em `metadata`. `tenantId`/`customerId` ficam com quem grava. */
+export function queuedBookingConfirmedNotification(event: BookingConfirmedV1, recipient: string) {
+  return {
+    channel: "EMAIL" as const,
+    status: "QUEUED" as const,
+    recipient,
+    templateKey: BOOKING_CONFIRMED_TEMPLATE_KEY,
+    eventKey: bookingConfirmedEventKey(event.appointmentId),
+    ...summarizeBookingConfirmed(event),
+    metadata: event,
   };
 }
 

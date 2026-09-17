@@ -1,5 +1,5 @@
 import type { Notification } from "@/generated/prisma/client";
-import { adminDb, type ScopedDb } from "@/server/db";
+import type { ScopedDb } from "@/server/db";
 
 /* Leitura e transição das linhas da fila. A interface existe para a máquina de estados ser
    testada sem banco; a implementação Prisma é a única usada em produção. */
@@ -19,8 +19,9 @@ export type NotificationStore = {
 
 const select = { id: true, tenantId: true, channel: true, status: true, recipient: true, templateKey: true, eventKey: true, metadata: true, attempts: true, nextAttemptAt: true } as const;
 
-/** `adminDb` atravessa barbearias (endpoint interno); a reserva passa o `tenantDb` dela. */
-export function prismaNotificationStore(db: ScopedDb = adminDb): NotificationStore {
+/** Quem chama escolhe o alcance: a reserva passa o `tenantDb` dela, o endpoint interno o
+ *  `adminDb` (atravessa barbearias). Sem padrão de propósito. */
+export function prismaNotificationStore(db: ScopedDb): NotificationStore {
   return {
     find: (id) => db.notification.findUnique({ where: { id }, select }),
     listPending: (now, limit) =>

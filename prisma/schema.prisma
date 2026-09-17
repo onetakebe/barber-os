@@ -616,6 +616,7 @@ model Notification {
   @@index([tenantId, status, createdAt])
   @@index([tenantId, customerId, readAt])
   @@index([customerId])
+  /// Fila (`listPending`). Compromisso: o Prisma não expressa o índice parcial ideal (só QUEUED com eventKey).
   @@index([status, nextAttemptAt])
 }
 

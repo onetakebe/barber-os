@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { adminDb, tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant, getBookingWindow } from "@/server/data/public-booking";
-import { BOOKING_CONFIRMED_TEMPLATE_KEY, bookingConfirmedEventKey, buildBookingConfirmedEvent, summarizeBookingConfirmed } from "@/server/notifications/booking-confirmed";
+import { buildBookingConfirmedEvent, queuedBookingConfirmedNotification } from "@/server/notifications/booking-confirmed";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
 
 export type CreatePublicBookingInput = {
@@ -82,10 +82,7 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
         timezone: tenant.timezone,
         cancellationNoticeHours: tenant.cancellationNoticeHours,
       });
-      const notification = await tx.notification.create({
-        data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "QUEUED", recipient: input.email, templateKey: BOOKING_CONFIRMED_TEMPLATE_KEY, eventKey: bookingConfirmedEventKey(appointment.id), ...summarizeBookingConfirmed(event), metadata: event },
-        select: { id: true },
-      });
+      const notification = await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, ...queuedBookingConfirmedNotification(event, input.email) }, select: { id: true } });
       return {
         appointmentId: appointment.id,
         notificationId: notification.id,
