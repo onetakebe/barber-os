@@ -584,25 +584,39 @@ model NotificationTemplate {
   @@index([tenantId, isActive])
 }
 
+/// Mensagem ao cliente ou aviso interno. Desde o Bloco 1 / ticket 3 também é a fila de envio:
+/// `eventKey` identifica o evento (idempotência no provedor), `metadata` guarda o snapshot
+/// versionado do evento e `attempts`/`nextAttemptAt`/`lastError` controlam a retentativa.
+/// Linhas antigas sem `eventKey` (envio simulado) nunca são reenviadas.
 model Notification {
-  id         String              @id @default(cuid())
-  tenantId   String
-  customerId String?
-  userId     String?
-  channel    NotificationChannel
-  status     NotificationStatus  @default(QUEUED)
-  title      String
-  body       String
-  metadata   Json?
-  readAt     DateTime?           @db.Timestamptz(3)
-  sentAt     DateTime?           @db.Timestamptz(3)
-  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
-  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer   Customer?           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id                String              @id @default(cuid())
+  tenantId          String
+  customerId        String?
+  userId            String?
+  channel           NotificationChannel
+  status            NotificationStatus  @default(QUEUED)
+  title             String
+  body              String
+  metadata          Json?
+  recipient         String?
+  templateKey       String?
+  eventKey          String?
+  provider          String?
+  providerMessageId String?
+  attempts          Int                 @default(0)
+  nextAttemptAt     DateTime?           @db.Timestamptz(3)
+  lastError         String?
+  readAt            DateTime?           @db.Timestamptz(3)
+  sentAt            DateTime?           @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Customer?           @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, eventKey, channel])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, customerId, readAt])
   @@index([customerId])
+  @@index([status, nextAttemptAt])
 }
 
 model Campaign {

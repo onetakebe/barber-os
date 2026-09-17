@@ -1,8 +1,12 @@
 "use server";
 
+import { after } from "next/server";
 import { z } from "zod";
 
 import { BOOKING_HORIZON_DAYS } from "@/server/data/public-booking";
+import { tenantDb } from "@/server/db";
+import { dispatchNotification } from "@/server/notifications/dispatch";
+import { prismaNotificationStore } from "@/server/notifications/store";
 import { BookingError, type BookingErrorCode } from "@/server/services/booking";
 import { readServiceIds, type BookingServiceItem } from "@/server/services/booking-services";
 import { createPublicBooking } from "@/server/services/public-booking";
@@ -32,7 +36,8 @@ const schema = z.object({
   time: z.string().regex(/^\d{2}:\d{2}$/),
   firstName: z.string().trim().min(2, "Informe seu nome."),
   lastName: z.string().trim().min(2, "Informe seu sobrenome."),
-  email: z.union([z.literal(""), z.email("Informe um e-mail válido.")]),
+  // Obrigatório: é para onde vai a confirmação.
+  email: z.email("Informe um e-mail válido."),
   phone: z.string().trim().min(7, "Informe seu telefone."),
   policy: z.literal("on", { error: "Aceite a política de cancelamento." }),
 });
@@ -50,7 +55,16 @@ export async function createPublicBookingAction(_state: BookingActionState, form
   if (!parsed.success) return { status: "error", errors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
   try {
     const booking = await createPublicBooking(parsed.data);
-    // Só o que a tela mostra: `tenantId`/`customerId` ficam no servidor.
+    // A confirmação sai depois da resposta, nunca no caminho dela: uma falha do provedor fica
+    // registrada na fila (retentativa pelo endpoint interno) e não derruba a reserva.
+    after(async () => {
+      try {
+        await dispatchNotification(booking.notificationId, { store: prismaNotificationStore(tenantDb(booking.tenantId)) });
+      } catch (error) {
+        console.error("BOOKING_NOTIFICATION_DISPATCH_FAILED", booking.notificationId, error);
+      }
+    });
+    // Só o que a tela mostra: `tenantId`/`customerId`/`notificationId` ficam no servidor.
     const { appointmentId, services, staffName, startsAt, endsAt, durationMinutes, currency, totalCents, cancellationNoticeHours } = booking;
     return { status: "success", message: "Reserva confirmada.", booking: { appointmentId, services, staffName, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), durationMinutes, currency, totalCents, cancellationNoticeHours } };
   } catch (error) {

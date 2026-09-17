@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { adminDb, tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant, getBookingWindow } from "@/server/data/public-booking";
+import { BOOKING_CONFIRMED_TEMPLATE_KEY, bookingConfirmedEventKey, buildBookingConfirmedEvent, summarizeBookingConfirmed } from "@/server/notifications/booking-confirmed";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
 
 export type CreatePublicBookingInput = {
@@ -12,7 +13,8 @@ export type CreatePublicBookingInput = {
   time: string;
   firstName: string;
   lastName: string;
-  email?: string;
+  /** Destinatário da confirmação: sem e-mail não há reserva pública. */
+  email: string;
   phone: string;
 };
 
@@ -21,10 +23,12 @@ export type CreatePublicBookingInput = {
  * com o mesmo barbeiro em sequência. Seleção, janela e horário são revalidados aqui — o wizard
  * só esconde o que não pode; quem forjar o formulário esbarra nas mesmas regras. O conflito de
  * horário é barrado pela exclusion constraint do banco, não por consulta prévia, então
- * sobrevive a duas reservas simultâneas.
+ * sobrevive a duas reservas simultâneas. A confirmação por e-mail entra na mesma transação
+ * como `Notification` QUEUED com o snapshot do evento; o envio acontece depois do commit
+ * (`dispatchNotification`), e se a transação cair não sobra nem agendamento nem notificação.
  */
 export async function createPublicBooking(input: CreatePublicBookingInput) {
-  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, name: true, timezone: true, currency: true, cancellationNoticeHours: true } });
+  const tenant = await adminDb.tenant.findFirst({ where: { slug: input.slug, deletedAt: null }, select: { id: true, name: true, address: true, phone: true, email: true, timezone: true, currency: true, cancellationNoticeHours: true } });
   if (!tenant) throw new BookingError("RESOURCE_NOT_FOUND");
   // Janela pública (hoje–hoje+60) também vale no servidor; o calendário só a esconde.
   const window = getBookingWindow(tenant.timezone);
@@ -35,8 +39,6 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
   const services = availability.services;
   const selected = selectBookingSlot(availability.slots, input.time, input.staffId);
   const appointmentId = randomUUID();
-  const serviceNames = services.items.map((item) => item.name).join(" + ");
-  const confirmed = services.items.length > 1 ? "confirmados" : "confirmado";
   // Sem adquirente real não há sinal online (decisão de 13/09): a reserva confirma sem cobrar.
   // `Service.depositRequired` e `Tenant.defaultDepositCents` seguem no cadastro para quando houver.
 
@@ -44,8 +46,8 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
     return await tenantTransaction(tenant.id, async (tx) => {
       const customer = await tx.customer.upsert({
         where: { tenantId_phone: { tenantId: tenant.id, phone: input.phone } },
-        update: { firstName: input.firstName, lastName: input.lastName, email: input.email || null },
-        create: { tenantId: tenant.id, firstName: input.firstName, lastName: input.lastName, email: input.email || null, phone: input.phone },
+        update: { firstName: input.firstName, lastName: input.lastName, email: input.email },
+        create: { tenantId: tenant.id, firstName: input.firstName, lastName: input.lastName, email: input.email, phone: input.phone },
       });
       const appointment = await tx.appointment.create({
         data: {
@@ -64,9 +66,29 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
         },
         select: { id: true, startsAt: true, endsAt: true, staff: { select: { displayName: true } } },
       });
-      await tx.notification.create({ data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "SENT", title: "Reserva confirmada", body: `${serviceNames} ${confirmed} para ${input.date} às ${input.time}. Envio simulado.`, metadata: { simulated: true }, sentAt: new Date() } });
+      // Snapshot do que foi persistido: quem lê a fila depois não precisa (nem deve) reconsultar.
+      const event = buildBookingConfirmedEvent({
+        appointmentId: appointment.id,
+        tenantId: tenant.id,
+        customerId: customer.id,
+        customer: { firstName: input.firstName, lastName: input.lastName, email: input.email },
+        business: { name: tenant.name, address: tenant.address, phone: tenant.phone, email: tenant.email },
+        staffName: appointment.staff.displayName,
+        services: services.items,
+        totalCents: services.totalCents,
+        currency: tenant.currency,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        timezone: tenant.timezone,
+        cancellationNoticeHours: tenant.cancellationNoticeHours,
+      });
+      const notification = await tx.notification.create({
+        data: { tenantId: tenant.id, customerId: customer.id, channel: "EMAIL", status: "QUEUED", recipient: input.email, templateKey: BOOKING_CONFIRMED_TEMPLATE_KEY, eventKey: bookingConfirmedEventKey(appointment.id), ...summarizeBookingConfirmed(event), metadata: event },
+        select: { id: true },
+      });
       return {
         appointmentId: appointment.id,
+        notificationId: notification.id,
         tenantId: tenant.id,
         customerId: customer.id,
         businessName: tenant.name,
