@@ -111,4 +111,11 @@ describe("nearestAvailable / stepAvailable", () => {
     expect(stepAvailable(options, 1, -1)).toBe(1);
     expect(stepAvailable(options, 2, 1)).toBe(4);
   });
+
+  it("answers -1 for Home/End on a list with nothing available, instead of an index past the end", () => {
+    const blocked = options.map((item) => ({ ...item, available: false }));
+    expect(stepAvailable(blocked, -1, 1)).toBe(-1); // Home
+    expect(stepAvailable(blocked, blocked.length, -1)).toBe(-1); // End
+    expect(stepAvailable(options, options.length, -1)).toBe(4);
+  });
 });

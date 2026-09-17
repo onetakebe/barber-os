@@ -61,6 +61,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   const [time, setTime] = useState("");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [availabilityError, setAvailabilityError] = useState<string>();
+  // Aviso de horário tomado (SLOT_CONFLICT); some quando o cliente escolhe outro dia ou horário.
+  const [conflictNotice, setConflictNotice] = useState<string>();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -98,8 +100,21 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   function resetSchedule() {
     nextRequest();
     setDate("");
+    clearSlots();
+  }
+
+  /** Dia novo (ou nenhum): o horário e a roda do dia anterior não ficam à mostra enquanto carrega. */
+  function clearSlots() {
     setTime("");
     setSlots([]);
+    setConflictNotice(undefined);
+  }
+
+  // A roda só entrega combinações dos `slots`, mas `time` nunca fica fora deles de qualquer forma.
+  function changeTime(next: string) {
+    if (!slots.some((slot) => slot.time === next)) return;
+    setTime(next);
+    setConflictNotice(undefined);
   }
 
   /** Mesma seleção nas duas rotas de disponibilidade: um `serviceIds` por serviço. */
@@ -114,8 +129,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
   async function loadAvailability(nextDate: string, request = nextRequest()) {
     setAvailabilityError(undefined);
     if (!nextDate) {
-      setSlots([]);
-      setTime("");
+      clearSlots();
       return;
     }
     try {
@@ -152,21 +166,25 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
     }
   }
 
-  /** Mês novo: recarrega os dias e cai no primeiro livre, com os horários dele. */
+  /** Mês novo: recarrega os dias e cai no primeiro livre, com os horários dele. Devolve `false`
+   *  quando a consulta ficou para trás (outra seleção no meio do caminho). */
   async function loadMonthAndFirstDay(nextMonth: string, request = nextRequest()) {
     const firstFree = await loadMonth(nextMonth, request);
-    if (firstFree === undefined) return;
+    if (firstFree === undefined) return false;
     setDate(firstFree);
+    clearSlots();
     await loadAvailability(firstFree, request);
+    return request === scheduleRequest.current;
   }
 
   function changeMonth(nextMonth: string) {
     setMonth(nextMonth);
-    startLoadingMonth(() => loadMonthAndFirstDay(nextMonth));
+    startLoadingMonth(async () => { await loadMonthAndFirstDay(nextMonth); });
   }
 
   function selectDate(nextDate: string) {
     setDate(nextDate);
+    clearSlots();
     startLoadingSlots(() => loadAvailability(nextDate));
   }
 
@@ -176,6 +194,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
     const result = await createPublicBookingAction(previous, formData);
     if (result.code === "SLOT_CONFLICT") {
       setStep(1);
+      setConflictNotice(result.message);
       const request = nextRequest();
       startLoadingSlots(async () => {
         await loadMonth(month, request);
@@ -191,8 +210,8 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
       const startMonth = catalog.window.today.slice(0, 7);
       setMonth(startMonth);
       startLoadingSlots(async () => {
-        await loadMonthAndFirstDay(startMonth);
-        setStep(1);
+        // Card trocado enquanto o mês carregava: a resposta foi descartada e o passo não avança.
+        if (await loadMonthAndFirstDay(startMonth)) setStep(1);
       });
       return;
     }
@@ -235,6 +254,7 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
                         type="button"
                         key={item.id}
                         onClick={() => toggleService(item.id)}
+                        disabled={isLoadingSchedule}
                         aria-pressed={serviceIds.includes(item.id)}
                         className={cn("choice-card flex flex-col p-5 text-left", item.isCombo && "choice-card--featured sm:col-span-2")}
                       >
@@ -257,12 +277,12 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Profissional</p>
                 {eligibleStaff.length === 0 ? <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">Nenhum profissional faz todos esses serviços na mesma visita. Ajuste a seleção.</p> : <div className="grid gap-3 sm:grid-cols-2">
-                  <button type="button" onClick={() => selectStaff("any")} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
+                  <button type="button" onClick={() => selectStaff("any")} disabled={isLoadingSchedule} aria-pressed={staffId === "any"} className="choice-card flex items-start gap-4 p-4 text-left">
                     <span className="icon-tile size-12 shrink-0"><UserRound className="size-5" aria-hidden="true" /></span>
                     <span className="min-w-0"><span className="block font-medium">Qualquer profissional</span><span className="choice-muted mt-1 block text-xs leading-5">O primeiro disponível para este horário.</span></span>
                   </button>
                   {eligibleStaff.map((member) => (
-                    <button type="button" key={member.id} onClick={() => selectStaff(member.id)} aria-pressed={staffId === member.id} className="choice-card flex items-start gap-4 p-4 text-left">
+                    <button type="button" key={member.id} onClick={() => selectStaff(member.id)} disabled={isLoadingSchedule} aria-pressed={staffId === member.id} className="choice-card flex items-start gap-4 p-4 text-left">
                       <StaffAvatar imageUrl={member.imageUrl} initials={initials(member.displayName)} className="size-12" />
                       <span className="min-w-0">
                         <span className="block font-medium">{member.displayName}</span>
@@ -284,13 +304,13 @@ export function BookingWizard({ catalog }: { catalog: BookingCatalog }) {
               <div>
                 <p className="mb-3 text-xs font-medium text-muted-foreground">Horário{date ? ` · ${dayLabel(date)}` : ""}{isLoadingSchedule ? " · calculando disponibilidade..." : ""}</p>
                 {slots.length ? (
-                  <TimeWheelPicker slots={slots} value={time} onChange={setTime} disabled={isLoadingSchedule} />
+                  <TimeWheelPicker slots={slots} value={time} onChange={changeTime} disabled={isLoadingSchedule} />
                 ) : isLoadingSchedule ? (
                   <p className="text-sm text-muted-foreground">Calculando disponibilidade...</p>
                 ) : (
                   <p className="rounded-xl border border-white/10 p-4 text-sm text-muted-foreground">{availabilityError ?? (date ? "Nenhum horário disponível neste dia." : "Nenhum dia com horário livre neste mês.")}</p>
                 )}
-                {state.code === "SLOT_CONFLICT" && state.message ? <p className="mt-3 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{state.message}</p> : null}
+                {conflictNotice ? <p className="mt-3 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">{conflictNotice}</p> : null}
               </div>
               <div className="rounded-xl border border-primary/20 bg-primary/6 p-3 text-xs text-muted-foreground"><ShieldCheck className="mr-2 inline size-4 text-brand" /> Conferimos a disponibilidade do seu horário antes de confirmar.</div>
             </div>

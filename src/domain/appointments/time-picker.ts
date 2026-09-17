@@ -50,11 +50,12 @@ export function nearestAvailable(options: readonly TimeOption[], index: number):
   return -1;
 }
 
-/** Próxima opção disponível a partir de `index` na direção `delta` (-1 sobe, +1 desce); fica onde
- *  está quando não há mais nenhuma. */
+/** Próxima opção disponível a partir de `index` na direção `delta` (-1 sobe, +1 desce). Sem mais
+ *  nenhuma, fica onde está; -1 quando o ponto de partida já está fora da lista (Home/End numa
+ *  lista toda bloqueada). */
 export function stepAvailable(options: readonly TimeOption[], index: number, delta: number): number {
   for (let cursor = index + delta; cursor >= 0 && cursor < options.length; cursor += delta) {
     if (options[cursor]?.available) return cursor;
   }
-  return index;
+  return index >= 0 && index < options.length ? index : -1;
 }

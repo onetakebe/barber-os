@@ -59,7 +59,8 @@ function WheelColumn({ label, options, value, onChange, disabled }: { label: str
   const settleTimer = useRef<number>(undefined);
   const lastListKey = useRef<string>(undefined);
   const selectedIndex = options.findIndex((item) => item.value === value);
-  // Lista nova (outro dia) salta direto; a mesma lista desliza até o valor.
+  // Primeira montagem e lista com outras opções (os minutos de outra jornada) saltam direto; a
+  // mesma lista — as horas são sempre 00–23 — desliza até o valor.
   const listKey = options.map((item) => item.value).join(",");
 
   // Alinha a roda ao valor escolhido: a linha `i` fica no centro quando `scrollTop = i × ROW_PX`.
@@ -73,7 +74,9 @@ function WheelColumn({ label, options, value, onChange, disabled }: { label: str
     list.scrollTo({ top, behavior: instant ? "instant" : "smooth" });
   }, [selectedIndex, listKey]);
 
-  useEffect(() => () => window.clearTimeout(settleTimer.current), []);
+  // Um repouso pendente pertence à lista/estado em que a rolagem aconteceu: não pode escolher
+  // depois que a roda foi desabilitada ou trocou de opções.
+  useEffect(() => () => window.clearTimeout(settleTimer.current), [disabled, listKey]);
 
   // Repouso da rolagem (toque, roda do mouse, trackpad): a linha do centro vira seleção; se ela
   // estiver bloqueada, a roda volta para a disponível mais perto.
@@ -103,7 +106,7 @@ function WheelColumn({ label, options, value, onChange, disabled }: { label: str
     if (!move) return;
     event.preventDefault();
     const next = move();
-    if (next >= 0 && next !== selectedIndex) onChange(options[next]!.value);
+    if (next >= 0 && next !== selectedIndex) onChange(options[next].value);
   }
 
   return (
