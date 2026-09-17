@@ -41,13 +41,28 @@ export function AppointmentCreateDialog({
   const [state, action, pending] = useActionState(createAppointmentAction, initialState);
 
   // Clique numa faixa vazia da grade abre o diálogo já com profissional, dia e hora.
-  useEffect(() => {
-    if (!prefill) return;
-    setStaffId(prefill.staffId);
-    setDate(prefill.date);
-    setTime(prefill.time);
-    setOpen(true);
-  }, [prefill]);
+  // Ajuste feito durante a renderização, comparando com o último prefill aplicado — não em efeito.
+  const [appliedPrefill, setAppliedPrefill] = useState(prefill);
+  if (prefill !== appliedPrefill) {
+    setAppliedPrefill(prefill);
+    if (prefill) {
+      setStaffId(prefill.staffId);
+      setDate(prefill.date);
+      setTime(prefill.time);
+      setOpen(true);
+    }
+  }
+
+  // Sucesso da action fecha o diálogo e limpa o horário. Mesmo padrão: compara com o último
+  // resultado já tratado, então dois sucessos seguidos também fecham.
+  const [handledState, setHandledState] = useState(state);
+  if (state !== handledState) {
+    setHandledState(state);
+    if (state.status === "success") {
+      setOpen(false);
+      setTime("");
+    }
+  }
 
   useEffect(() => {
     if (!open || !serviceId || !date) return;
@@ -71,10 +86,6 @@ export function AppointmentCreateDialog({
     });
     return () => { cancelled = true; };
   }, [open, serviceId, staffId, date, tenantSlug]);
-
-  useEffect(() => {
-    if (state.status === "success") { setOpen(false); setTime(""); }
-  }, [state.status]);
 
   const service = services.find((item) => item.id === serviceId);
 
