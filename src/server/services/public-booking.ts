@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { adminDb, tenantTransaction } from "@/server/db";
 import { getAvailabilityForTenant, getBookingWindow } from "@/server/data/public-booking";
 import { buildBookingConfirmedEvent, queuedBookingConfirmedNotification } from "@/server/notifications/booking-confirmed";
+import { buildBookingConfirmedWhatsAppLink } from "@/server/notifications/whatsapp-link";
 import { BookingError, selectBookingSlot } from "@/server/services/booking";
 
 export type CreatePublicBookingInput = {
@@ -98,6 +99,7 @@ export async function createPublicBooking(input: CreatePublicBookingInput) {
         currency: tenant.currency,
         totalCents: services.totalCents,
         cancellationNoticeHours: tenant.cancellationNoticeHours,
+        whatsappUrl: buildBookingConfirmedWhatsAppLink(event),
       };
     });
   } catch (error) {

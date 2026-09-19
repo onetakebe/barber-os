@@ -144,6 +144,13 @@ test("customer toggles three services, picks the time on the wheel and persists 
   await expect(page.getByText("Total a pagar na barbearia")).toBeVisible();
   await expect(page.getByText("Nada foi cobrado agora", { exact: false })).toBeVisible();
   await expect(page.getByText("Barba Premium", { exact: true })).toBeVisible();
+  // Botão "clique para conversar": abre o wa.me da barbearia com a confirmação já escrita.
+  const whatsapp = page.getByRole("link", { name: /Confirmar pelo WhatsApp/ });
+  await expect(whatsapp).toHaveAttribute("href", /^https:\/\/wa\.me\/3225550184\?text=/);
+  const text = decodeURIComponent((await whatsapp.getAttribute("href"))!.split("text=")[1]!);
+  expect(text).toContain("AS Barber Club");
+  expect(text).toContain("Barba Premium");
+  expect(text).toContain(`às ${chosenTime}`);
   await expect(page.getByText("Sobrancelha", { exact: true })).toBeVisible();
   await expect(page.getByText("45 min", { exact: false }).first()).toBeVisible();
 
