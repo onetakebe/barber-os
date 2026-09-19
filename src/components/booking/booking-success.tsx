@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check } from "lucide-react";
+import { Check, MessageCircle } from "lucide-react";
 
 import type { BookingActionState } from "@/app/(public)/barbearia/[slug]/agendar/actions";
 import { dateTimeLabel, money } from "@/components/booking/booking-format";
@@ -29,7 +29,12 @@ export function BookingSuccess({ booking, business }: Props) {
           <div className="mt-2 flex justify-between font-medium"><span>Total a pagar na barbearia</span><span>{money(booking.totalCents, booking.currency)}</span></div>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">Nada foi cobrado agora. Para cancelar, avise com {booking.cancellationNoticeHours}h de antecedência.</p>
-        <Button asChild className="mt-7 w-full"><Link href={`/barbearia/${business.slug}`}>Voltar à barbearia</Link></Button>
+        {booking.whatsappUrl ? (
+          <Button asChild className="mt-7 w-full">
+            <a href={booking.whatsappUrl} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4" /> Confirmar pelo WhatsApp</a>
+          </Button>
+        ) : null}
+        <Button asChild variant={booking.whatsappUrl ? "outline" : "default"} className={booking.whatsappUrl ? "mt-3 w-full" : "mt-7 w-full"}><Link href={`/barbearia/${business.slug}`}>Voltar à barbearia</Link></Button>
       </CardContent>
     </Card>
   );

@@ -117,20 +117,6 @@ export function renderBookingConfirmed(event: BookingConfirmedV1): RenderedMessa
 }
 
 /** Título e corpo em texto puro da linha em `Notification` (central de notificações do painel). */
-/** Mensagem que o cliente manda à barbearia pelo link do WhatsApp (tela de sucesso). Curta: vai
- *  na URL e é lida no celular. Sem e-mail nem endereço — a barbearia já os tem. */
-export function renderBookingConfirmedWhatsAppText(event: BookingConfirmedV1): string {
-  const tz = event.timezone;
-  const names = event.services.map((item) => item.name).join(" + ");
-  return [
-    `Olá! Acabei de reservar na ${event.business.name}.`,
-    `${names} com ${event.staffName}`,
-    `${longDate(event.startsAt, tz)}, às ${clock(event.startsAt, tz)}`,
-    `Código: ${event.appointmentId.slice(0, 8)}`,
-    `— ${event.customer.name}`,
-  ].join("\n");
-}
-
 export function summarizeBookingConfirmed(event: BookingConfirmedV1) {
   const names = event.services.map((item) => item.name).join(" + ");
   return {

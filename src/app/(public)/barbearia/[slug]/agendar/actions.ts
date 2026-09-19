@@ -27,6 +27,8 @@ export type BookingActionState = {
     currency: string;
     totalCents: number;
     cancellationNoticeHours: number;
+    /** Link wa.me para o cliente confirmar com a barbearia; null quando ela não tem telefone. */
+    whatsappUrl: string | null;
   };
 };
 
@@ -67,8 +69,8 @@ export async function createPublicBookingAction(_state: BookingActionState, form
       }
     });
     // Só o que a tela mostra: `tenantId`/`customerId`/`notificationId` ficam no servidor.
-    const { appointmentId, services, staffName, startsAt, endsAt, durationMinutes, currency, totalCents, cancellationNoticeHours } = booking;
-    return { status: "success", message: "Reserva confirmada.", booking: { appointmentId, services, staffName, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), durationMinutes, currency, totalCents, cancellationNoticeHours } };
+    const { appointmentId, services, staffName, startsAt, endsAt, durationMinutes, currency, totalCents, cancellationNoticeHours, whatsappUrl } = booking;
+    return { status: "success", message: "Reserva confirmada.", booking: { appointmentId, services, staffName, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), durationMinutes, currency, totalCents, cancellationNoticeHours, whatsappUrl } };
   } catch (error) {
     if (error instanceof BookingError) return { status: "error", code: error.code, message: messages[error.code] };
     console.error("PUBLIC_BOOKING_FAILED", error);
